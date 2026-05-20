@@ -36,4 +36,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Portainer webhook
-        run: curl --fail-with-body --show-error --silent -k -X POST "${{ secrets.PORTAINER_WEBHOOK_URL }}"
+        run: curl --fail-with-body --show-error --silent -k -X POST "${{secrets.PORTAINER_WEBHOOK_URL}}"
