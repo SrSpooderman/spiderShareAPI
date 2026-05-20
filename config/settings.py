@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 15
     super_admin_username: str | None = None
     super_admin_password: str | None = None
+    steam_web_api_key: str | None = None
+    steam_web_api_base_url: str = "https://api.steampowered.com"
 
     model_config = SettingsConfigDict(
         env_file=".env",

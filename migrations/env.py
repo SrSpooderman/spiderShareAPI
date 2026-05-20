@@ -7,6 +7,7 @@ from app.shared.infrastructure.db.base import Base
 from config.settings import settings
 
 # Models
+from app.modules.steam.infrastructure.models import SteamGameModel
 from app.modules.users.infrastructure.models import UserModel
 
 

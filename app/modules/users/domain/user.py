@@ -34,6 +34,10 @@ def can_create_user_with_role(creator_role: UserRole, target_role: UserRole) -> 
     return False
 
 
+def can_manage_user(manager_role: UserRole, target_role: UserRole) -> bool:
+    return ROLE_RANKS[manager_role] > ROLE_RANKS[target_role]
+
+
 @dataclass
 class User:
     id: UUID
