@@ -2,11 +2,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.bootstrap.app_factory import create_app
-from tests.factories import make_steam_account, make_steam_game, make_user
+from tests.factories import make_steam_game, make_user
 from tests.fakes import (
     FakeAccessTokenService,
     FakePasswordHasher,
-    FakeSteamAccountRepository,
     FakeSteamClient,
     FakeSteamGameRepository,
     FakeUserRepository,
@@ -19,11 +18,6 @@ def user_factory():
 
 
 @pytest.fixture
-def steam_account_factory():
-    return make_steam_account
-
-
-@pytest.fixture
 def steam_game_factory():
     return make_steam_game
 
@@ -31,11 +25,6 @@ def steam_game_factory():
 @pytest.fixture
 def user_repository():
     return FakeUserRepository()
-
-
-@pytest.fixture
-def steam_account_repository():
-    return FakeSteamAccountRepository()
 
 
 @pytest.fixture

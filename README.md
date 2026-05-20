@@ -6,7 +6,7 @@ Ahora mismo incluye:
 
 - Autenticacion con JWT.
 - Gestion de usuarios, roles, passwords y avatares.
-- Integracion con Steam para vincular cuentas y consultar juegos publicos.
+- Integracion con Steam para consultar juegos publicos.
 - Migraciones automaticas con Alembic.
 - Seed automatico de super admin.
 - Tests unitarios y HTTP aislados de base de datos y red.
@@ -253,10 +253,7 @@ Reglas principales:
 
 | Metodo | Ruta | Descripcion |
 | --- | --- | --- |
-| `POST` | `/steam/link` | Vincula el usuario autenticado con Steam. |
-| `GET` | `/steam/me` | Consulta la cuenta Steam vinculada. |
 | `GET` | `/steam/users/{steam_id_or_vanity}/games` | Consulta juegos publicos de Steam. |
-| `DELETE` | `/steam/link` | Desvincula Steam del usuario autenticado. |
 
 `steam_id_or_vanity` acepta SteamID64, vanity name o URLs de Steam tipo `/id/...` y `/profiles/...`.
 

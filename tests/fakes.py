@@ -1,13 +1,9 @@
 from uuid import UUID
 
-from app.modules.steam.domain.steam_account import (
-    UserSteamAccount,
-    UserSteamAccountCreate,
-)
 from app.modules.steam.domain.steam_game import SteamGame, SteamGameCreate
 from app.modules.users.domain.user import User, UserCreate, UserRole
 from app.shared.infrastructure.providers.steam.steam_client import SteamApiError
-from tests.factories import make_steam_account, make_steam_game, make_user
+from tests.factories import make_steam_game, make_user
 
 
 class FakeUserRepository:
@@ -102,54 +98,6 @@ class FakeUserRepository:
     def delete(self, user_uuid: UUID) -> bool:
         self.deleted.append(user_uuid)
         return self.users.pop(user_uuid, None) is not None
-
-
-class FakeSteamAccountRepository:
-    def __init__(self, accounts: list[UserSteamAccount] | None = None) -> None:
-        self.accounts: dict[UUID, UserSteamAccount] = {}
-        self.created: list[UserSteamAccountCreate] = []
-        self.deleted_user_ids: list[UUID] = []
-
-        for account in accounts or []:
-            self.add(account)
-
-    def add(self, account: UserSteamAccount) -> UserSteamAccount:
-        self.accounts[account.id] = account
-        return account
-
-    def get_by_user_id(self, user_id: UUID) -> UserSteamAccount | None:
-        return next(
-            (account for account in self.accounts.values() if account.user_id == user_id),
-            None,
-        )
-
-    def get_by_steam_id_64(self, steam_id_64: str) -> UserSteamAccount | None:
-        return next(
-            (
-                account
-                for account in self.accounts.values()
-                if account.steam_id_64 == steam_id_64
-            ),
-            None,
-        )
-
-    def create(self, steam_account: UserSteamAccountCreate) -> UserSteamAccount:
-        self.created.append(steam_account)
-        return self.add(
-            make_steam_account(
-                user_id=steam_account.user_id,
-                steam_id_64=steam_account.steam_id_64,
-            )
-        )
-
-    def delete_by_user_id(self, user_id: UUID) -> bool:
-        self.deleted_user_ids.append(user_id)
-        account = self.get_by_user_id(user_id)
-        if account is None:
-            return False
-
-        del self.accounts[account.id]
-        return True
 
 
 class FakeSteamGameRepository:

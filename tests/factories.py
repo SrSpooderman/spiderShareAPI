@@ -1,7 +1,6 @@
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from app.modules.steam.domain.steam_account import UserSteamAccount
 from app.modules.steam.domain.steam_game import SteamGame
 from app.modules.users.domain.user import User, UserRole
 
@@ -39,24 +38,6 @@ def make_user(
         is_active=is_active,
         last_seen_version=last_seen_version,
         last_login_at=last_login_at,
-        created_at=created_at or now,
-        updated_at=updated_at or now,
-    )
-
-
-def make_steam_account(
-    *,
-    id: UUID | None = None,
-    user_id: UUID | None = None,
-    steam_id_64: str = "76561198000000000",
-    created_at: datetime | None = None,
-    updated_at: datetime | None = None,
-) -> UserSteamAccount:
-    now = utc_now()
-    return UserSteamAccount(
-        id=id or uuid4(),
-        user_id=user_id or uuid4(),
-        steam_id_64=steam_id_64,
         created_at=created_at or now,
         updated_at=updated_at or now,
     )
