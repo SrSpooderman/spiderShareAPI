@@ -27,8 +27,10 @@ from tests.factories import utc_now
 
 @pytest.mark.unit
 def test_video_create_to_model_preserves_video_fields() -> None:
+    video_id = uuid4()
     owner_id = uuid4()
     video_create = VideoCreate(
+        id=video_id,
         owner_id=owner_id,
         title="Clip title",
         description="Clip context",
@@ -38,6 +40,7 @@ def test_video_create_to_model_preserves_video_fields() -> None:
 
     model = video_create_to_model(video_create)
 
+    assert model.id == str(video_id)
     assert model.owner_id == str(owner_id)
     assert model.title == "Clip title"
     assert model.description == "Clip context"

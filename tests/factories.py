@@ -7,6 +7,8 @@ from app.modules.videos.domain.video import (
     Video,
     VideoCategory,
     VideoProcessingStatus,
+    VideoVariant,
+    VideoVariantType,
     VideoTag,
 )
 
@@ -112,6 +114,9 @@ def make_video(
     processing_status: VideoProcessingStatus = VideoProcessingStatus.PENDING,
     width: int | None = None,
     height: int | None = None,
+    duration_seconds: float | None = None,
+    thumbnail_path: str | None = None,
+    variants: list[VideoVariant] | None = None,
     favorite_count: int = 0,
     categories: list[VideoCategory] | None = None,
     tags: list[VideoTag] | None = None,
@@ -132,9 +137,42 @@ def make_video(
         width=width,
         height=height,
         aspect_ratio=None,
+        duration_seconds=duration_seconds,
+        thumbnail_path=thumbnail_path,
+        variants=variants or [],
         favorite_count=favorite_count,
         categories=categories or [],
         tags=tags or [],
         created_at=created_at or now,
         updated_at=updated_at or now,
+    )
+
+
+def make_video_variant(
+    *,
+    id: UUID | None = None,
+    video_id: UUID | None = None,
+    variant_type: VideoVariantType = VideoVariantType.LOW_H264,
+    codec: str = "h264",
+    container: str = "mp4",
+    width: int = 1280,
+    height: int = 720,
+    bitrate_kbps: int | None = None,
+    size_bytes: int = 1024,
+    path: str = "variants/video/low_h264.mp4",
+    created_at: datetime | None = None,
+) -> VideoVariant:
+    now = utc_now()
+    return VideoVariant(
+        id=id or uuid4(),
+        video_id=video_id or uuid4(),
+        variant_type=variant_type,
+        codec=codec,
+        container=container,
+        width=width,
+        height=height,
+        bitrate_kbps=bitrate_kbps,
+        size_bytes=size_bytes,
+        path=path,
+        created_at=created_at or now,
     )

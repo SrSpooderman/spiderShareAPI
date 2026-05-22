@@ -19,6 +19,11 @@ class VideoProcessingStatus(str, Enum):
     FAILED = "failed"
 
 
+class VideoVariantType(str, Enum):
+    ORIGINAL_AV1 = "original_av1"
+    LOW_H264 = "low_h264"
+
+
 @dataclass
 class VideoCategory:
     id: UUID
@@ -54,11 +59,49 @@ class VideoReaction:
 
 
 @dataclass
+class VideoVariant:
+    id: UUID
+    video_id: UUID
+    variant_type: VideoVariantType
+    codec: str
+    container: str
+    width: int
+    height: int
+    bitrate_kbps: int | None
+    size_bytes: int
+    path: str
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class VideoVariantCreate:
+    variant_type: VideoVariantType
+    codec: str
+    container: str
+    width: int
+    height: int
+    bitrate_kbps: int | None
+    size_bytes: int
+    path: str
+
+
+@dataclass(frozen=True)
+class VideoProcessingResult:
+    width: int
+    height: int
+    aspect_ratio: VideoAspectRatio
+    duration_seconds: float
+    thumbnail_path: str
+    variants: list[VideoVariantCreate]
+
+
+@dataclass
 class VideoCreate:
     owner_id: UUID
     title: str
     description: str
     original_filename: str
+    id: UUID | None = None
     is_registered_only: bool = False
     category_ids: list[UUID] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
@@ -78,6 +121,9 @@ class Video:
     width: int | None
     height: int | None
     aspect_ratio: VideoAspectRatio | None
+    duration_seconds: float | None
+    thumbnail_path: str | None
+    variants: list[VideoVariant]
     favorite_count: int
     categories: list[VideoCategory]
     tags: list[VideoTag]
@@ -111,3 +157,8 @@ def can_delete_video(video: Video, current_user: User | None) -> bool:
 
 def can_favorite_or_react_to_video(video: Video, current_user: User | None) -> bool:
     return current_user is not None and can_view_video(video, current_user)
+
+
+def video_popularity_score(video: Video) -> int:
+    total_favorites = video.favorite_count
+    return video.favorite_count * 3 + total_favorites

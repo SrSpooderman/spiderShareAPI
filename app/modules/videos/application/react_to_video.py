@@ -1,9 +1,14 @@
 from uuid import UUID
 
 from app.modules.users.domain.user import User
-from app.modules.videos.application.errors import VideoNotFoundError, VideoPermissionError
+from app.modules.videos.application.errors import (
+    VideoNotFoundError,
+    VideoPermissionError,
+    VideoReactionLimitError,
+)
 from app.modules.videos.domain.ports import VideoRepository
 from app.modules.videos.domain.video import VideoReaction, can_favorite_or_react_to_video
+from config.settings import settings
 
 
 class ReactToVideo:
@@ -36,6 +41,25 @@ class ReactToVideo:
 
         if not can_favorite_or_react_to_video(video, current_user):
             raise VideoPermissionError
+
+        reaction_count = self.video_repository.count_user_reactions(
+            video_id,
+            current_user.id,
+        )
+        has_reaction = self.video_repository.has_user_reaction(
+            video_id,
+            current_user.id,
+            reaction_type,
+        )
+        if reaction_count >= settings.max_video_reactions_per_user and not has_reaction:
+            raise VideoReactionLimitError
+
+        if has_reaction:
+            return self.video_repository.set_reaction(
+                video_id,
+                current_user.id,
+                reaction_type,
+            )
 
         return self.video_repository.set_reaction(
             video_id,

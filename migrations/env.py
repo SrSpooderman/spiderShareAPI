@@ -17,6 +17,7 @@ from app.modules.videos.infrastructure.models import (
     VideoReactionModel,
     VideoTagAssignmentModel,
     VideoTagModel,
+    VideoVariantModel,
 )
 
 
