@@ -1,8 +1,13 @@
 import pytest
 
 from app.modules.auth.wiring import get_current_user, get_optional_current_user
-from app.modules.videos.wiring import get_video_repository
-from tests.factories import make_video_category, make_video_tag
+from app.modules.videos.wiring import (
+    get_video_repository,
+    get_video_storage,
+    get_video_transcoder,
+)
+from app.modules.videos.domain.video import VideoProcessingStatus
+from tests.factories import make_video_category, make_video_tag, make_video_variant
 
 
 @pytest.mark.http
@@ -56,6 +61,7 @@ def test_list_videos_supports_pagination_filters_and_popularity_order(
     assert body["limit"] == 1
     assert body["offset"] == 0
     assert [item["id"] for item in body["items"]] == [str(matching_high.id)]
+    assert body["items"][0]["popularity_score"] == matching_high.favorite_count * 4
 
     response = client.get(
         "/videos",
@@ -71,6 +77,51 @@ def test_list_videos_supports_pagination_filters_and_popularity_order(
 
     assert response.status_code == 200
     assert [item["id"] for item in response.json()["items"]] == [str(matching_low.id)]
+    assert response.json()["items"][0]["popularity_score"] == matching_low.favorite_count * 4
+
+
+@pytest.mark.http
+def test_upload_video_creates_video_and_stores_original(
+    app,
+    client,
+    user_factory,
+    video_repository,
+    video_storage,
+    video_transcoder,
+) -> None:
+    user = user_factory()
+    app.dependency_overrides[get_video_repository] = lambda: video_repository
+    app.dependency_overrides[get_video_storage] = lambda: video_storage
+    app.dependency_overrides[get_video_transcoder] = lambda: video_transcoder
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    response = client.post(
+        "/videos",
+        data={
+            "title": "Boss clip",
+            "description": "Context",
+            "tags": ["boss", "clip"],
+        },
+        files={"file": ("clip.mp4", b"video-bytes", "video/mp4")},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["title"] == "Boss clip"
+    assert body["owner_id"] == str(user.id)
+    assert body["original_filename"] == "clip.mp4"
+    assert body["processing_status"] == "ready"
+    assert body["width"] == 1920
+    assert body["height"] == 1080
+    assert body["duration_seconds"] == 12.5
+    assert body["thumbnail_path"].endswith("/thumbnail.jpg")
+    assert body["playback_url"] == f"/videos/{body['id']}/stream"
+    assert body["download_url"] == f"/videos/{body['id']}/download"
+    assert body["thumbnail_url"] == f"/videos/{body['id']}/thumbnail"
+    assert [variant["codec"] for variant in body["variants"]] == ["av1", "h264"]
+    assert video_repository.created[0].id == video_storage.saved[0]["video_id"]
+    assert video_storage.saved[0]["content"] == b"video-bytes"
+    assert video_transcoder.transcoded == [video_repository.created[0].id]
 
 
 @pytest.mark.http
@@ -99,6 +150,97 @@ def test_get_video_detail_includes_permissions_favorite_and_reactions(
     assert body["can_delete"] is True
     assert body["is_favorite"] is True
     assert body["reactions"] == [{"type": "like", "count": 1}]
+
+
+@pytest.mark.http
+def test_video_download_stream_and_thumbnail_respect_visibility(
+    app,
+    client,
+    tmp_path,
+    user_factory,
+    video_factory,
+    video_repository,
+    video_storage,
+) -> None:
+    owner = user_factory()
+    video = video_repository.add(
+        video_factory(
+            owner_id=owner.id,
+            processing_status=VideoProcessingStatus.READY,
+            thumbnail_path=f"thumbnails/video/{owner.id}.jpg",
+            variants=[
+                make_video_variant(
+                    video_id=owner.id,
+                    path="variants/video/low_h264.mp4",
+                )
+            ],
+        )
+    )
+    original_path = tmp_path / "original.mp4"
+    stream_path = tmp_path / "low_h264.mp4"
+    thumbnail_path = tmp_path / "thumbnail.jpg"
+    original_path.write_bytes(b"original-video")
+    stream_path.write_bytes(b"stream-video")
+    thumbnail_path.write_bytes(b"thumbnail")
+    video_storage.original_paths[video.id] = original_path
+    video_storage.variant_paths[(video.id, "low_h264")] = stream_path
+    video_storage.thumbnail_paths[video.id] = thumbnail_path
+    app.dependency_overrides[get_video_repository] = lambda: video_repository
+    app.dependency_overrides[get_video_storage] = lambda: video_storage
+    app.dependency_overrides[get_optional_current_user] = lambda: None
+
+    response = client.get(f"/videos/{video.id}/download")
+
+    assert response.status_code == 200
+    assert response.content == b"original-video"
+    assert response.headers["content-disposition"].startswith("attachment;")
+
+    response = client.get(f"/videos/{video.id}/stream")
+
+    assert response.status_code == 200
+    assert response.content == b"stream-video"
+    assert response.headers["content-type"].startswith("video/mp4")
+
+    response = client.get(f"/videos/{video.id}/thumbnail")
+
+    assert response.status_code == 200
+    assert response.content == b"thumbnail"
+    assert response.headers["content-type"].startswith("image/jpeg")
+
+
+@pytest.mark.http
+def test_registered_only_video_files_require_login(
+    app,
+    client,
+    tmp_path,
+    user_factory,
+    video_factory,
+    video_repository,
+    video_storage,
+) -> None:
+    user = user_factory()
+    video = video_repository.add(
+        video_factory(
+            is_registered_only=True,
+            processing_status=VideoProcessingStatus.READY,
+            variants=[make_video_variant()],
+        )
+    )
+    original_path = tmp_path / "original.mp4"
+    original_path.write_bytes(b"original-video")
+    video_storage.original_paths[video.id] = original_path
+    app.dependency_overrides[get_video_repository] = lambda: video_repository
+    app.dependency_overrides[get_video_storage] = lambda: video_storage
+    app.dependency_overrides[get_optional_current_user] = lambda: None
+
+    response = client.get(f"/videos/{video.id}/download")
+
+    assert response.status_code == 403
+
+    app.dependency_overrides[get_optional_current_user] = lambda: user
+    response = client.get(f"/videos/{video.id}/download")
+
+    assert response.status_code == 200
 
 
 @pytest.mark.http
@@ -134,6 +276,7 @@ def test_delete_video_blocks_admin_but_allows_super_admin(
     user_factory,
     video_factory,
     video_repository,
+    video_storage,
 ) -> None:
     owner = user_factory()
     admin = user_factory(role="admin")
@@ -141,6 +284,7 @@ def test_delete_video_blocks_admin_but_allows_super_admin(
     admin_blocked_video = video_repository.add(video_factory(owner_id=owner.id))
     super_admin_video = video_repository.add(video_factory(owner_id=owner.id))
     app.dependency_overrides[get_video_repository] = lambda: video_repository
+    app.dependency_overrides[get_video_storage] = lambda: video_storage
     app.dependency_overrides[get_current_user] = lambda: admin
 
     response = client.delete(f"/videos/{admin_blocked_video.id}")
@@ -153,6 +297,7 @@ def test_delete_video_blocks_admin_but_allows_super_admin(
 
     assert response.status_code == 204
     assert video_repository.get_by_id(super_admin_video.id) is None
+    assert video_storage.deleted_all == [super_admin_video.id]
 
 
 @pytest.mark.http
@@ -201,16 +346,33 @@ def test_reaction_routes_set_list_and_delete_reaction(
 
     response = client.post(
         f"/videos/{video.id}/reactions",
-        json={"reaction_type": "like"},
+        json={"reaction_type": "🔥"},
     )
 
     assert response.status_code == 200
-    assert response.json()["reaction_type"] == "like"
+    assert response.json()["reaction_type"] == "🔥"
+
+    response = client.post(
+        f"/videos/{video.id}/reactions",
+        json={"reaction_type": "😂"},
+    )
+
+    assert response.status_code == 200
+
+    response = client.post(
+        f"/videos/{video.id}/reactions",
+        json={"reaction_type": "😮"},
+    )
+
+    assert response.status_code == 409
 
     response = client.get(f"/videos/{video.id}/reactions")
 
     assert response.status_code == 200
-    assert response.json() == [{"type": "like", "count": 1}]
+    assert response.json() == [
+        {"type": "🔥", "count": 1},
+        {"type": "😂", "count": 1},
+    ]
 
     response = client.delete(f"/videos/{video.id}/reactions")
 

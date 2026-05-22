@@ -10,6 +10,8 @@ from tests.fakes import (
     FakeSteamGameRepository,
     FakeUserRepository,
     FakeVideoRepository,
+    FakeVideoStorage,
+    FakeVideoTranscoder,
 )
 
 
@@ -41,6 +43,16 @@ def steam_game_repository():
 @pytest.fixture
 def video_repository():
     return FakeVideoRepository()
+
+
+@pytest.fixture
+def video_storage():
+    return FakeVideoStorage()
+
+
+@pytest.fixture
+def video_transcoder():
+    return FakeVideoTranscoder()
 
 
 @pytest.fixture

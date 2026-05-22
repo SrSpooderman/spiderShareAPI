@@ -10,7 +10,13 @@ from app.modules.videos.domain.ports import (
     VideoListResult,
     VideoRepository,
 )
-from app.modules.videos.domain.video import Video, VideoCreate, VideoReaction
+from app.modules.videos.domain.video import (
+    Video,
+    VideoCreate,
+    VideoProcessingResult,
+    VideoProcessingStatus,
+    VideoReaction,
+)
 from app.modules.videos.infrastructure.mappers import (
     video_reaction_model_to_domain,
     video_create_to_model,
@@ -23,6 +29,7 @@ from app.modules.videos.infrastructure.models import (
     VideoReactionModel,
     VideoTagAssignmentModel,
     VideoTagModel,
+    VideoVariantModel,
 )
 
 
@@ -57,8 +64,12 @@ class SqlAlchemyVideoRepository(VideoRepository):
                 selectinload(VideoModel.tag_assignments).selectinload(
                     VideoTagAssignmentModel.tag,
                 ),
+                selectinload(VideoModel.variants),
             )
-            .order_by(VideoModel.favorite_count.desc(), VideoModel.created_at.desc())
+            .order_by(
+                self._popularity_score_expression().desc(),
+                VideoModel.created_at.desc(),
+            )
             .limit(limit)
             .offset(offset)
         )
@@ -80,6 +91,66 @@ class SqlAlchemyVideoRepository(VideoRepository):
         self._replace_tag_assignments(model, video.tags)
 
         video_id = UUID(model.id)
+        self.session.commit()
+        model = self._get_model(video_id)
+
+        return video_model_to_domain(model)
+
+    def mark_processing(self, video_id: UUID) -> Video | None:
+        model = self._get_model(video_id)
+        if model is None:
+            return None
+
+        model.processing_status = VideoProcessingStatus.PROCESSING.value
+        self.session.commit()
+        model = self._get_model(video_id)
+
+        return video_model_to_domain(model)
+
+    def mark_processed(
+        self,
+        video_id: UUID,
+        result: VideoProcessingResult,
+    ) -> Video | None:
+        model = self._get_model(video_id)
+        if model is None:
+            return None
+
+        model.processing_status = VideoProcessingStatus.READY.value
+        model.width = result.width
+        model.height = result.height
+        model.aspect_ratio = result.aspect_ratio.value
+        model.duration_seconds = result.duration_seconds
+        model.thumbnail_path = result.thumbnail_path
+        model.variants.clear()
+        self.session.flush()
+        model.variants.extend(
+            [
+                VideoVariantModel(
+                    video_id=model.id,
+                    variant_type=variant.variant_type.value,
+                    codec=variant.codec,
+                    container=variant.container,
+                    width=variant.width,
+                    height=variant.height,
+                    bitrate_kbps=variant.bitrate_kbps,
+                    size_bytes=variant.size_bytes,
+                    path=variant.path,
+                )
+                for variant in result.variants
+            ]
+        )
+        self.session.commit()
+        model = self._get_model(video_id)
+
+        return video_model_to_domain(model)
+
+    def mark_failed(self, video_id: UUID) -> Video | None:
+        model = self._get_model(video_id)
+        if model is None:
+            return None
+
+        model.processing_status = VideoProcessingStatus.FAILED.value
         self.session.commit()
         model = self._get_model(video_id)
 
@@ -183,6 +254,7 @@ class SqlAlchemyVideoRepository(VideoRepository):
                 selectinload(VideoModel.tag_assignments).selectinload(
                     VideoTagAssignmentModel.tag,
                 ),
+                selectinload(VideoModel.variants),
             )
             .order_by(VideoFavoriteModel.created_at.desc())
             .limit(limit)
@@ -217,6 +289,7 @@ class SqlAlchemyVideoRepository(VideoRepository):
             select(VideoReactionModel).where(
                 VideoReactionModel.video_id == str(video_id),
                 VideoReactionModel.user_id == str(user_id),
+                VideoReactionModel.reaction_type == reaction_type,
             )
         )
         if model is None:
@@ -226,8 +299,6 @@ class SqlAlchemyVideoRepository(VideoRepository):
                 reaction_type=reaction_type,
             )
             self.session.add(model)
-        else:
-            model.reaction_type = reaction_type
 
         self.session.commit()
         self.session.refresh(model)
@@ -235,17 +306,40 @@ class SqlAlchemyVideoRepository(VideoRepository):
         return video_reaction_model_to_domain(model)
 
     def remove_reaction(self, video_id: UUID, user_id: UUID) -> None:
-        model = self.session.scalar(
+        models = self.session.scalars(
             select(VideoReactionModel).where(
                 VideoReactionModel.video_id == str(video_id),
                 VideoReactionModel.user_id == str(user_id),
             )
-        )
-        if model is None:
+        ).all()
+        if not models:
             return
 
-        self.session.delete(model)
+        for model in models:
+            self.session.delete(model)
         self.session.commit()
+
+    def count_user_reactions(self, video_id: UUID, user_id: UUID) -> int:
+        statement = select(func.count(VideoReactionModel.id)).where(
+            VideoReactionModel.video_id == str(video_id),
+            VideoReactionModel.user_id == str(user_id),
+        )
+
+        return self.session.scalar(statement) or 0
+
+    def has_user_reaction(
+        self,
+        video_id: UUID,
+        user_id: UUID,
+        reaction_type: str,
+    ) -> bool:
+        statement = select(VideoReactionModel.id).where(
+            VideoReactionModel.video_id == str(video_id),
+            VideoReactionModel.user_id == str(user_id),
+            VideoReactionModel.reaction_type == reaction_type,
+        )
+
+        return self.session.scalar(statement) is not None
 
     def get_reaction_counts(self, video_id: UUID) -> dict[str, int]:
         statement = (
@@ -267,6 +361,7 @@ class SqlAlchemyVideoRepository(VideoRepository):
                 selectinload(VideoModel.tag_assignments).selectinload(
                     VideoTagAssignmentModel.tag,
                 ),
+                selectinload(VideoModel.variants),
             )
         )
 
@@ -302,6 +397,10 @@ class SqlAlchemyVideoRepository(VideoRepository):
                 )
 
         return conditions
+
+    def _popularity_score_expression(self):
+        total_favorites = VideoModel.favorite_count
+        return VideoModel.favorite_count * 3 + total_favorites
 
     def _replace_category_assignments(
         self,

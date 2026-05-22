@@ -12,8 +12,11 @@ from app.modules.videos.domain.video import (
     VideoProcessingStatus,
     VideoReaction,
     VideoTag,
+    VideoVariant,
+    VideoVariantType,
     can_delete_video,
     can_edit_video,
+    video_popularity_score,
 )
 from config.settings import settings
 
@@ -61,6 +64,32 @@ class VideoReactionResponse(BaseModel):
         )
 
 
+class VideoVariantResponse(BaseModel):
+    id: UUID
+    variant_type: VideoVariantType
+    codec: str
+    container: str
+    width: int
+    height: int
+    bitrate_kbps: int | None
+    size_bytes: int
+    path: str
+
+    @classmethod
+    def from_domain(cls, variant: VideoVariant) -> "VideoVariantResponse":
+        return cls(
+            id=variant.id,
+            variant_type=variant.variant_type,
+            codec=variant.codec,
+            container=variant.container,
+            width=variant.width,
+            height=variant.height,
+            bitrate_kbps=variant.bitrate_kbps,
+            size_bytes=variant.size_bytes,
+            path=variant.path,
+        )
+
+
 class VideoSummaryResponse(BaseModel):
     id: UUID
     title: str
@@ -71,6 +100,7 @@ class VideoSummaryResponse(BaseModel):
     edited_at: datetime | None
     processing_status: VideoProcessingStatus
     favorite_count: int
+    popularity_score: int
     categories: list[VideoCategoryResponse]
     tags: list[VideoTagResponse]
     created_at: datetime
@@ -88,6 +118,7 @@ class VideoSummaryResponse(BaseModel):
             edited_at=video.edited_at,
             processing_status=video.processing_status,
             favorite_count=video.favorite_count,
+            popularity_score=video_popularity_score(video),
             categories=[
                 VideoCategoryResponse.from_domain(category)
                 for category in video.categories
@@ -100,9 +131,15 @@ class VideoSummaryResponse(BaseModel):
 
 class VideoDetailResponse(VideoSummaryResponse):
     original_filename: str
+    playback_url: str | None
+    download_url: str
+    thumbnail_url: str | None
     aspect_ratio: VideoAspectRatio | None
     width: int | None
     height: int | None
+    duration_seconds: float | None
+    thumbnail_path: str | None
+    variants: list[VideoVariantResponse]
     is_owner: bool
     can_edit: bool
     can_delete: bool
@@ -121,9 +158,27 @@ class VideoDetailResponse(VideoSummaryResponse):
         return cls(
             **VideoSummaryResponse.from_domain(video).model_dump(),
             original_filename=video.original_filename,
+            playback_url=(
+                f"/videos/{video.id}/stream"
+                if video.processing_status == VideoProcessingStatus.READY
+                and video.variants
+                else None
+            ),
+            download_url=f"/videos/{video.id}/download",
+            thumbnail_url=(
+                f"/videos/{video.id}/thumbnail"
+                if video.thumbnail_path is not None
+                else None
+            ),
             aspect_ratio=video.aspect_ratio,
             width=video.width,
             height=video.height,
+            duration_seconds=video.duration_seconds,
+            thumbnail_path=video.thumbnail_path,
+            variants=[
+                VideoVariantResponse.from_domain(variant)
+                for variant in video.variants
+            ],
             is_owner=current_user is not None and current_user.id == video.owner_id,
             can_edit=can_edit_video(video, current_user),
             can_delete=can_delete_video(video, current_user),

@@ -1,8 +1,16 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from pathlib import Path
+from typing import BinaryIO
 from uuid import UUID
 
-from app.modules.videos.domain.video import Video, VideoCreate, VideoReaction
+from app.modules.videos.domain.video import (
+    Video,
+    VideoCreate,
+    VideoProcessingResult,
+    VideoReaction,
+    VideoVariantType,
+)
 
 
 @dataclass(frozen=True)
@@ -37,6 +45,22 @@ class VideoRepository(ABC):
 
     @abstractmethod
     def create(self, video: VideoCreate) -> Video:
+        pass
+
+    @abstractmethod
+    def mark_processing(self, video_id: UUID) -> Video | None:
+        pass
+
+    @abstractmethod
+    def mark_processed(
+        self,
+        video_id: UUID,
+        result: VideoProcessingResult,
+    ) -> Video | None:
+        pass
+
+    @abstractmethod
+    def mark_failed(self, video_id: UUID) -> Video | None:
         pass
 
     @abstractmethod
@@ -92,5 +116,57 @@ class VideoRepository(ABC):
         pass
 
     @abstractmethod
+    def count_user_reactions(self, video_id: UUID, user_id: UUID) -> int:
+        pass
+
+    @abstractmethod
+    def has_user_reaction(
+        self,
+        video_id: UUID,
+        user_id: UUID,
+        reaction_type: str,
+    ) -> bool:
+        pass
+
+    @abstractmethod
     def get_reaction_counts(self, video_id: UUID) -> dict[str, int]:
+        pass
+
+
+class VideoStorage(ABC):
+    @abstractmethod
+    def save_original(
+        self,
+        *,
+        video_id: UUID,
+        original_filename: str,
+        content_type: str | None,
+        file: BinaryIO,
+    ) -> None:
+        pass
+
+    @abstractmethod
+    def delete_original(self, video_id: UUID) -> None:
+        pass
+
+    @abstractmethod
+    def delete_video_files(self, video_id: UUID) -> None:
+        pass
+
+    @abstractmethod
+    def get_original_path(self, video_id: UUID) -> Path | None:
+        pass
+
+    @abstractmethod
+    def get_variant_path(self, video_id: UUID, variant_type: VideoVariantType) -> Path | None:
+        pass
+
+    @abstractmethod
+    def get_thumbnail_path(self, video_id: UUID) -> Path | None:
+        pass
+
+
+class VideoTranscoder(ABC):
+    @abstractmethod
+    def transcode(self, video_id: UUID) -> VideoProcessingResult:
         pass

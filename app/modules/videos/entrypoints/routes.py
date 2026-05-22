@@ -1,17 +1,30 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from fastapi.responses import FileResponse
 
 from app.modules.auth.wiring import get_current_user, get_optional_current_user
 from app.modules.users.domain.user import User
 from app.modules.videos.application.delete_video import DeleteVideo
-from app.modules.videos.application.errors import VideoNotFoundError, VideoPermissionError
+from app.modules.videos.application.errors import (
+    VideoDurationTooLongError,
+    VideoFileEmptyError,
+    VideoFileTooLargeError,
+    VideoNotFoundError,
+    VideoPermissionError,
+    VideoReactionLimitError,
+    VideoUnsupportedMimeTypeError,
+    VideoUploadError,
+)
 from app.modules.videos.application.favorite_video import FavoriteVideo
 from app.modules.videos.application.get_video import GetVideo
 from app.modules.videos.application.list_videos import ListVideos, ListVideosQuery
+from app.modules.videos.application.process_video import ProcessVideo
 from app.modules.videos.application.react_to_video import ReactToVideo
+from app.modules.videos.application.upload_video import UploadVideo, UploadVideoCommand
 from app.modules.videos.application.update_video import UpdateVideo, UpdateVideoCommand
-from app.modules.videos.domain.ports import VideoRepository
+from app.modules.videos.domain.ports import VideoRepository, VideoStorage
+from app.modules.videos.domain.video import VideoProcessingStatus, VideoVariantType
 from app.modules.videos.entrypoints.schemas import (
     VideoDetailResponse,
     VideoListResponse,
@@ -25,10 +38,14 @@ from app.modules.videos.wiring import (
     get_favorite_video,
     get_get_video,
     get_list_videos,
+    get_process_video,
     get_react_to_video,
+    get_upload_video,
     get_update_video,
     get_video_repository,
+    get_video_storage,
 )
+from config.settings import settings
 
 
 router = APIRouter(tags=["videos"])
@@ -53,8 +70,126 @@ def _map_video_error(error: Exception) -> HTTPException:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not allowed to access that video",
         )
+    if isinstance(error, VideoReactionLimitError):
+        return HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "A user can only react "
+                f"{settings.max_video_reactions_per_user} times to the same video"
+            ),
+        )
 
     raise error
+
+
+def _map_video_upload_error(error: VideoUploadError) -> HTTPException:
+    if isinstance(error, VideoFileTooLargeError):
+        return HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Video file is too large",
+        )
+    if isinstance(error, VideoDurationTooLongError):
+        return HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Video duration is too long",
+        )
+    if isinstance(error, VideoUnsupportedMimeTypeError):
+        return HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Video must be mp4 or webm",
+        )
+    if isinstance(error, VideoFileEmptyError):
+        return HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Video file cannot be empty",
+        )
+
+    return HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Video upload failed",
+    )
+
+
+def _normalize_tags(tags: list[str]) -> list[str]:
+    normalized_tags = [tag.strip() for tag in tags if tag.strip()]
+    if len(normalized_tags) > settings.max_video_tags:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Too many tags",
+        )
+
+    return normalized_tags
+
+
+def _normalize_required_text(value: str, field_name: str) -> str:
+    text = value.strip()
+    if not text:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"{field_name} cannot be blank",
+        )
+
+    return text
+
+
+def _ensure_file_exists(path) -> None:
+    if path is None or not path.exists() or not path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video file not found",
+        )
+
+
+def _get_accessible_video(video_id: UUID, current_user: User | None, get_video_use_case: GetVideo):
+    try:
+        return get_video_use_case.execute(video_id, current_user)
+    except (VideoNotFoundError, VideoPermissionError, VideoReactionLimitError) as error:
+        raise _map_video_error(error)
+
+
+@router.post("/videos", response_model=VideoDetailResponse, status_code=status.HTTP_201_CREATED)
+async def upload_video(
+    file: UploadFile = File(...),
+    title: str = Form(..., min_length=1, max_length=255),
+    description: str = Form(..., min_length=1, max_length=5000),
+    is_registered_only: bool = Form(default=False),
+    category_ids: list[UUID] = Form(default=[]),
+    tags: list[str] = Form(default=[]),
+    current_user: User = Depends(get_current_user),
+    upload_video_use_case: UploadVideo = Depends(get_upload_video),
+    process_video_use_case: ProcessVideo = Depends(get_process_video),
+) -> VideoDetailResponse:
+    original_filename = file.filename or "video"
+
+    try:
+        await file.seek(0)
+        video = upload_video_use_case.execute(
+            UploadVideoCommand(
+                owner_id=current_user.id,
+                title=_normalize_required_text(title, "title"),
+                description=_normalize_required_text(description, "description"),
+                original_filename=original_filename,
+                content_type=file.content_type,
+                file=file.file,
+                is_registered_only=is_registered_only,
+                category_ids=category_ids,
+                tags=_normalize_tags(tags),
+            )
+        )
+        processed_video = process_video_use_case.execute(video.id)
+        if processed_video is not None:
+            video = processed_video
+    except VideoUploadError as error:
+        raise _map_video_upload_error(error)
+    finally:
+        await file.close()
+
+    return VideoDetailResponse.from_domain(
+        video,
+        current_user=current_user,
+        is_favorite=False,
+        reaction_counts={},
+    )
 
 
 @router.get("/videos", response_model=VideoListResponse)
@@ -94,7 +229,7 @@ def get_video(
     try:
         video = get_video_use_case.execute(video_id, current_user)
         reaction_counts = react_to_video.get_counts(video_id, current_user)
-    except (VideoNotFoundError, VideoPermissionError) as error:
+    except (VideoNotFoundError, VideoPermissionError, VideoReactionLimitError) as error:
         raise _map_video_error(error)
 
     is_favorite = (
@@ -107,6 +242,69 @@ def get_video(
         current_user=current_user,
         is_favorite=is_favorite,
         reaction_counts=reaction_counts,
+    )
+
+
+@router.get("/videos/{video_id}/download")
+def download_video(
+    video_id: UUID,
+    current_user: User | None = Depends(get_optional_current_user),
+    get_video_use_case: GetVideo = Depends(get_get_video),
+    video_storage: VideoStorage = Depends(get_video_storage),
+) -> FileResponse:
+    video = _get_accessible_video(video_id, current_user, get_video_use_case)
+    original_path = video_storage.get_original_path(video_id)
+    _ensure_file_exists(original_path)
+
+    return FileResponse(
+        original_path,
+        media_type="application/octet-stream",
+        filename=video.original_filename,
+    )
+
+
+@router.get("/videos/{video_id}/stream")
+def stream_video(
+    video_id: UUID,
+    variant_type: VideoVariantType = Query(default=VideoVariantType.LOW_H264),
+    current_user: User | None = Depends(get_optional_current_user),
+    get_video_use_case: GetVideo = Depends(get_get_video),
+    video_storage: VideoStorage = Depends(get_video_storage),
+) -> FileResponse:
+    video = _get_accessible_video(video_id, current_user, get_video_use_case)
+    if video.processing_status != VideoProcessingStatus.READY:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Video is not ready",
+        )
+
+    variant_path = video_storage.get_variant_path(video_id, variant_type)
+    _ensure_file_exists(variant_path)
+
+    return FileResponse(
+        variant_path,
+        media_type="video/mp4",
+        filename=f"{video_id}-{variant_type.value}.mp4",
+        content_disposition_type="inline",
+    )
+
+
+@router.get("/videos/{video_id}/thumbnail")
+def get_video_thumbnail(
+    video_id: UUID,
+    current_user: User | None = Depends(get_optional_current_user),
+    get_video_use_case: GetVideo = Depends(get_get_video),
+    video_storage: VideoStorage = Depends(get_video_storage),
+) -> FileResponse:
+    _get_accessible_video(video_id, current_user, get_video_use_case)
+    thumbnail_path = video_storage.get_thumbnail_path(video_id)
+    _ensure_file_exists(thumbnail_path)
+
+    return FileResponse(
+        thumbnail_path,
+        media_type="image/jpeg",
+        filename=f"{video_id}-thumbnail.jpg",
+        content_disposition_type="inline",
     )
 
 
@@ -142,7 +340,7 @@ def update_video(
             current_user,
         )
         reaction_counts = react_to_video.get_counts(video_id, current_user)
-    except (VideoNotFoundError, VideoPermissionError) as error:
+    except (VideoNotFoundError, VideoPermissionError, VideoReactionLimitError) as error:
         raise _map_video_error(error)
 
     return VideoDetailResponse.from_domain(
@@ -241,7 +439,7 @@ def react_to_video_route(
             request.reaction_type,
             current_user,
         )
-    except (VideoNotFoundError, VideoPermissionError) as error:
+    except (VideoNotFoundError, VideoPermissionError, VideoReactionLimitError) as error:
         raise _map_video_error(error)
 
     return VideoReactionResponse.from_domain(reaction)

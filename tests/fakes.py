@@ -1,13 +1,21 @@
 from dataclasses import replace
 from datetime import datetime
+from pathlib import Path
 from uuid import UUID
 
 from app.modules.steam.domain.steam_game import SteamGame, SteamGameCreate
 from app.modules.users.domain.user import User, UserCreate, UserRole
 from app.modules.videos.domain.ports import VideoListFilters, VideoListResult
-from app.modules.videos.domain.video import Video, VideoCreate, VideoReaction
+from app.modules.videos.domain.video import (
+    Video,
+    VideoCreate,
+    VideoProcessingResult,
+    VideoProcessingStatus,
+    VideoReaction,
+    video_popularity_score,
+)
 from app.shared.infrastructure.providers.steam.steam_client import SteamApiError
-from tests.factories import make_steam_game, make_user, make_video, utc_now
+from tests.factories import make_steam_game, make_user, make_video, make_video_variant, utc_now
 
 
 class FakeUserRepository:
@@ -145,7 +153,7 @@ class FakeVideoRepository:
         self.updated: list[tuple[UUID, dict]] = []
         self.deleted: list[UUID] = []
         self.favorites: set[tuple[UUID, UUID]] = set()
-        self.reactions: dict[tuple[UUID, UUID], VideoReaction] = {}
+        self.reactions: dict[tuple[UUID, UUID, str], VideoReaction] = {}
 
         for video in videos or []:
             self.add(video)
@@ -195,7 +203,7 @@ class FakeVideoRepository:
 
         videos = sorted(
             videos,
-            key=lambda video: (video.favorite_count, video.created_at),
+            key=lambda video: (video_popularity_score(video), video.created_at),
             reverse=True,
         )
 
@@ -205,6 +213,7 @@ class FakeVideoRepository:
         self.created.append(video)
         return self.add(
             make_video(
+                id=video.id,
                 owner_id=video.owner_id,
                 title=video.title,
                 description=video.description,
@@ -212,6 +221,68 @@ class FakeVideoRepository:
                 is_registered_only=video.is_registered_only,
             )
         )
+
+    def mark_processing(self, video_id: UUID) -> Video | None:
+        video = self.videos.get(video_id)
+        if video is None:
+            return None
+
+        updated_video = replace(
+            video,
+            processing_status=VideoProcessingStatus.PROCESSING,
+        )
+        self.videos[video_id] = updated_video
+        return updated_video
+
+    def mark_processed(
+        self,
+        video_id: UUID,
+        result: VideoProcessingResult,
+    ) -> Video | None:
+        video = self.videos.get(video_id)
+        if video is None:
+            return None
+
+        now = utc_now()
+        variants = [
+            make_video_variant(
+                video_id=video_id,
+                variant_type=variant.variant_type,
+                codec=variant.codec,
+                container=variant.container,
+                width=variant.width,
+                height=variant.height,
+                bitrate_kbps=variant.bitrate_kbps,
+                size_bytes=variant.size_bytes,
+                path=variant.path,
+            )
+            for variant in result.variants
+        ]
+        updated_video = replace(
+            video,
+            processing_status=VideoProcessingStatus.READY,
+            width=result.width,
+            height=result.height,
+            aspect_ratio=result.aspect_ratio,
+            duration_seconds=result.duration_seconds,
+            thumbnail_path=result.thumbnail_path,
+            variants=variants,
+            updated_at=now,
+        )
+        self.videos[video_id] = updated_video
+        return updated_video
+
+    def mark_failed(self, video_id: UUID) -> Video | None:
+        video = self.videos.get(video_id)
+        if video is None:
+            return None
+
+        updated_video = replace(
+            video,
+            processing_status=VideoProcessingStatus.FAILED,
+        )
+        self.videos[video_id] = updated_video
+        return updated_video
 
     def update_metadata(
         self,
@@ -310,7 +381,7 @@ class FakeVideoRepository:
         reaction_type: str,
     ) -> VideoReaction:
         now = utc_now()
-        reaction = self.reactions.get((video_id, user_id))
+        reaction = self.reactions.get((video_id, user_id, reaction_type))
         if reaction is None:
             reaction = VideoReaction(
                 id=make_user().id,
@@ -320,23 +391,141 @@ class FakeVideoRepository:
                 created_at=now,
                 updated_at=now,
             )
-        else:
-            reaction = replace(reaction, reaction_type=reaction_type, updated_at=now)
-
-        self.reactions[(video_id, user_id)] = reaction
+        self.reactions[(video_id, user_id, reaction_type)] = reaction
         return reaction
 
     def remove_reaction(self, video_id: UUID, user_id: UUID) -> None:
-        self.reactions.pop((video_id, user_id), None)
+        for key in list(self.reactions):
+            reaction_video_id, reaction_user_id, _reaction_type = key
+            if reaction_video_id == video_id and reaction_user_id == user_id:
+                self.reactions.pop(key, None)
+
+    def count_user_reactions(self, video_id: UUID, user_id: UUID) -> int:
+        return sum(
+            1
+            for reaction_video_id, reaction_user_id, _reaction_type in self.reactions
+            if reaction_video_id == video_id and reaction_user_id == user_id
+        )
+
+    def has_user_reaction(
+        self,
+        video_id: UUID,
+        user_id: UUID,
+        reaction_type: str,
+    ) -> bool:
+        return (video_id, user_id, reaction_type) in self.reactions
 
     def get_reaction_counts(self, video_id: UUID) -> dict[str, int]:
         counts: dict[str, int] = {}
-        for (reaction_video_id, _user_id), reaction in self.reactions.items():
+        for (reaction_video_id, _user_id, _reaction_type), reaction in self.reactions.items():
             if reaction_video_id != video_id:
                 continue
             counts[reaction.reaction_type] = counts.get(reaction.reaction_type, 0) + 1
 
         return counts
+
+
+class FakeVideoStorage:
+    def __init__(
+        self,
+        error: Exception | None = None,
+        delete_error: Exception | None = None,
+    ) -> None:
+        self.error = error
+        self.delete_error = delete_error
+        self.saved: list[dict] = []
+        self.deleted: list[UUID] = []
+        self.deleted_all: list[UUID] = []
+        self.original_paths: dict[UUID, Path] = {}
+        self.variant_paths: dict[tuple[UUID, str], Path] = {}
+        self.thumbnail_paths: dict[UUID, Path] = {}
+
+    def save_original(
+        self,
+        *,
+        video_id: UUID,
+        original_filename: str,
+        content_type: str | None,
+        file,
+    ) -> None:
+        if self.error is not None:
+            raise self.error
+
+        self.saved.append(
+            {
+                "video_id": video_id,
+                "original_filename": original_filename,
+                "content_type": content_type,
+                "content": file.read(),
+            }
+        )
+
+    def delete_original(self, video_id: UUID) -> None:
+        self.deleted.append(video_id)
+
+    def delete_video_files(self, video_id: UUID) -> None:
+        if self.delete_error is not None:
+            raise self.delete_error
+        self.deleted_all.append(video_id)
+
+    def get_original_path(self, video_id: UUID) -> Path | None:
+        return self.original_paths.get(video_id)
+
+    def get_variant_path(self, video_id: UUID, variant_type) -> Path | None:
+        return self.variant_paths.get((video_id, variant_type.value))
+
+    def get_thumbnail_path(self, video_id: UUID) -> Path | None:
+        return self.thumbnail_paths.get(video_id)
+
+
+class FakeVideoTranscoder:
+    def __init__(self, result: VideoProcessingResult | None = None, error: Exception | None = None) -> None:
+        self.result = result
+        self.error = error
+        self.transcoded: list[UUID] = []
+
+    def transcode(self, video_id: UUID) -> VideoProcessingResult:
+        self.transcoded.append(video_id)
+        if self.error is not None:
+            raise self.error
+        if self.result is not None:
+            return self.result
+
+        from app.modules.videos.domain.video import (
+            VideoAspectRatio,
+            VideoVariantCreate,
+            VideoVariantType,
+        )
+
+        return VideoProcessingResult(
+            width=1920,
+            height=1080,
+            aspect_ratio=VideoAspectRatio.RATIO_16_9,
+            duration_seconds=12.5,
+            thumbnail_path=f"thumbnails/{video_id}/thumbnail.jpg",
+            variants=[
+                VideoVariantCreate(
+                    variant_type=VideoVariantType.ORIGINAL_AV1,
+                    codec="av1",
+                    container="mp4",
+                    width=1920,
+                    height=1080,
+                    bitrate_kbps=None,
+                    size_bytes=2048,
+                    path=f"variants/{video_id}/original_av1.mp4",
+                ),
+                VideoVariantCreate(
+                    variant_type=VideoVariantType.LOW_H264,
+                    codec="h264",
+                    container="mp4",
+                    width=1280,
+                    height=720,
+                    bitrate_kbps=None,
+                    size_bytes=1024,
+                    path=f"variants/{video_id}/low_h264.mp4",
+                ),
+            ],
+        )
 
 
 class FakePasswordHasher:

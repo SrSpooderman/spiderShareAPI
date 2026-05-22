@@ -9,6 +9,8 @@ from app.modules.videos.domain.video import (
     VideoProcessingStatus,
     VideoReaction,
     VideoTag,
+    VideoVariant,
+    VideoVariantType,
 )
 from app.modules.videos.infrastructure.models import (
     VideoCategoryModel,
@@ -16,6 +18,7 @@ from app.modules.videos.infrastructure.models import (
     VideoModel,
     VideoReactionModel,
     VideoTagModel,
+    VideoVariantModel,
 )
 
 
@@ -25,6 +28,7 @@ def video_model_to_domain(model: VideoModel) -> Video:
         for assignment in model.category_assignments
     ]
     tags = [video_tag_model_to_domain(assignment.tag) for assignment in model.tag_assignments]
+    variants = [video_variant_model_to_domain(variant) for variant in model.variants]
 
     return Video(
         id=UUID(model.id),
@@ -43,6 +47,9 @@ def video_model_to_domain(model: VideoModel) -> Video:
             if model.aspect_ratio is not None
             else None
         ),
+        duration_seconds=model.duration_seconds,
+        thumbnail_path=model.thumbnail_path,
+        variants=variants,
         favorite_count=model.favorite_count,
         categories=categories,
         tags=tags,
@@ -52,13 +59,17 @@ def video_model_to_domain(model: VideoModel) -> Video:
 
 
 def video_create_to_model(video: VideoCreate) -> VideoModel:
-    return VideoModel(
+    model = VideoModel(
         owner_id=str(video.owner_id),
         title=video.title,
         description=video.description,
         original_filename=video.original_filename,
         is_registered_only=video.is_registered_only,
     )
+    if video.id is not None:
+        model.id = str(video.id)
+
+    return model
 
 
 def video_category_model_to_domain(model: VideoCategoryModel) -> VideoCategory:
@@ -96,4 +107,20 @@ def video_reaction_model_to_domain(model: VideoReactionModel) -> VideoReaction:
         reaction_type=model.reaction_type,
         created_at=model.created_at,
         updated_at=model.updated_at,
+    )
+
+
+def video_variant_model_to_domain(model: VideoVariantModel) -> VideoVariant:
+    return VideoVariant(
+        id=UUID(model.id),
+        video_id=UUID(model.video_id),
+        variant_type=VideoVariantType(model.variant_type),
+        codec=model.codec,
+        container=model.container,
+        width=model.width,
+        height=model.height,
+        bitrate_kbps=model.bitrate_kbps,
+        size_bytes=model.size_bytes,
+        path=model.path,
+        created_at=model.created_at,
     )

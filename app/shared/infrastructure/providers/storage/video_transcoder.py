@@ -1,0 +1,233 @@
+import json
+import subprocess
+from dataclasses import dataclass
+from pathlib import Path
+from uuid import UUID
+
+from app.modules.videos.domain.ports import VideoTranscoder
+from app.modules.videos.domain.video import (
+    VideoAspectRatio,
+    VideoProcessingResult,
+    VideoVariantCreate,
+    VideoVariantType,
+)
+from config.settings import settings
+
+
+@dataclass(frozen=True)
+class _SourceMetadata:
+    path: Path
+    width: int
+    height: int
+    duration_seconds: float
+
+
+@dataclass(frozen=True)
+class _OutputGeometry:
+    width: int
+    height: int
+    aspect_ratio: VideoAspectRatio
+
+
+class FfmpegVideoTranscoder(VideoTranscoder):
+    def __init__(self, root_path: str | None = None) -> None:
+        self.root_path = Path(root_path or settings.video_storage_path)
+
+    def transcode(self, video_id: UUID) -> VideoProcessingResult:
+        source = self._probe_source(video_id)
+        original_geometry = self._target_geometry(source.width, source.height)
+        low_geometry = self._low_geometry(original_geometry)
+        variants_dir = self.root_path / "variants" / str(video_id)
+        thumbnails_dir = self.root_path / "thumbnails" / str(video_id)
+        variants_dir.mkdir(parents=True, exist_ok=True)
+        thumbnails_dir.mkdir(parents=True, exist_ok=True)
+
+        av1_path = variants_dir / "original_av1.mp4"
+        h264_path = variants_dir / "low_h264.mp4"
+        thumbnail_path = thumbnails_dir / "thumbnail.jpg"
+
+        self._run_ffmpeg(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(source.path),
+                "-vf",
+                self._scale_pad_filter(original_geometry),
+                "-c:v",
+                "libaom-av1",
+                "-crf",
+                "34",
+                "-b:v",
+                "0",
+                "-c:a",
+                "aac",
+                "-movflags",
+                "+faststart",
+                str(av1_path),
+            ]
+        )
+        self._run_ffmpeg(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(source.path),
+                "-vf",
+                self._scale_pad_filter(low_geometry),
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "23",
+                "-c:a",
+                "aac",
+                "-movflags",
+                "+faststart",
+                str(h264_path),
+            ]
+        )
+        self._run_ffmpeg(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(source.path),
+                "-ss",
+                "00:00:01",
+                "-frames:v",
+                "1",
+                "-vf",
+                self._scale_pad_filter(low_geometry),
+                str(thumbnail_path),
+            ]
+        )
+
+        return VideoProcessingResult(
+            width=original_geometry.width,
+            height=original_geometry.height,
+            aspect_ratio=original_geometry.aspect_ratio,
+            duration_seconds=source.duration_seconds,
+            thumbnail_path=self._relative_path(thumbnail_path),
+            variants=[
+                self._variant(
+                    video_id=video_id,
+                    variant_type=VideoVariantType.ORIGINAL_AV1,
+                    codec="av1",
+                    path=av1_path,
+                    geometry=original_geometry,
+                ),
+                self._variant(
+                    video_id=video_id,
+                    variant_type=VideoVariantType.LOW_H264,
+                    codec="h264",
+                    path=h264_path,
+                    geometry=low_geometry,
+                ),
+            ],
+        )
+
+    def _probe_source(self, video_id: UUID) -> _SourceMetadata:
+        original_dir = self.root_path / "originals" / str(video_id)
+        candidates = sorted(original_dir.glob("original.*"))
+        if not candidates:
+            raise FileNotFoundError(f"Original video not found for {video_id}")
+
+        path = candidates[0]
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=width,height",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "json",
+                str(path),
+            ],
+            capture_output=True,
+            check=True,
+            text=True,
+            timeout=15,
+        )
+        metadata = json.loads(result.stdout)
+        stream = metadata["streams"][0]
+
+        return _SourceMetadata(
+            path=path,
+            width=int(stream["width"]),
+            height=int(stream["height"]),
+            duration_seconds=float(metadata["format"]["duration"]),
+        )
+
+    def _target_geometry(self, width: int, height: int) -> _OutputGeometry:
+        source_ratio = width / height
+        ratios = {
+            VideoAspectRatio.RATIO_4_3: 4 / 3,
+            VideoAspectRatio.RATIO_16_9: 16 / 9,
+            VideoAspectRatio.RATIO_21_9: 21 / 9,
+        }
+        aspect_ratio, target_ratio = min(
+            ratios.items(),
+            key=lambda item: abs(source_ratio - item[1]),
+        )
+
+        if source_ratio > target_ratio:
+            output_width = self._even(width)
+            output_height = self._even(round(output_width / target_ratio))
+        else:
+            output_height = self._even(height)
+            output_width = self._even(round(output_height * target_ratio))
+
+        return _OutputGeometry(output_width, output_height, aspect_ratio)
+
+    def _low_geometry(self, geometry: _OutputGeometry) -> _OutputGeometry:
+        if geometry.height <= 720:
+            return geometry
+
+        ratio = geometry.width / geometry.height
+        height = 720
+        width = self._even(round(height * ratio))
+
+        return _OutputGeometry(width, height, geometry.aspect_ratio)
+
+    def _scale_pad_filter(self, geometry: _OutputGeometry) -> str:
+        return (
+            f"scale={geometry.width}:{geometry.height}:"
+            "force_original_aspect_ratio=decrease,"
+            f"pad={geometry.width}:{geometry.height}:(ow-iw)/2:(oh-ih)/2"
+        )
+
+    def _variant(
+        self,
+        *,
+        video_id: UUID,
+        variant_type: VideoVariantType,
+        codec: str,
+        path: Path,
+        geometry: _OutputGeometry,
+    ) -> VideoVariantCreate:
+        return VideoVariantCreate(
+            variant_type=variant_type,
+            codec=codec,
+            container="mp4",
+            width=geometry.width,
+            height=geometry.height,
+            bitrate_kbps=None,
+            size_bytes=path.stat().st_size,
+            path=self._relative_path(path),
+        )
+
+    def _relative_path(self, path: Path) -> str:
+        return path.relative_to(self.root_path).as_posix()
+
+    def _run_ffmpeg(self, command: list[str]) -> None:
+        subprocess.run(command, capture_output=True, check=True, text=True)
+
+    def _even(self, value: int) -> int:
+        return max(2, value if value % 2 == 0 else value + 1)
