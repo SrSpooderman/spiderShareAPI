@@ -3,6 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_name: str = "SpiderShare"
+    app_version: str = "1.0.0"
     app_env: str = "local"
     app_debug: bool = True
     database_url: str
