@@ -1,0 +1,349 @@
+from datetime import datetime, timezone
+from uuid import UUID
+
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, selectinload
+
+from app.modules.videos.domain.ports import (
+    VideoListFilters,
+    VideoListResult,
+    VideoRepository,
+)
+from app.modules.videos.domain.video import Video, VideoCreate, VideoReaction
+from app.modules.videos.infrastructure.mappers import (
+    video_reaction_model_to_domain,
+    video_create_to_model,
+    video_model_to_domain,
+)
+from app.modules.videos.infrastructure.models import (
+    VideoCategoryAssignmentModel,
+    VideoFavoriteModel,
+    VideoModel,
+    VideoReactionModel,
+    VideoTagAssignmentModel,
+    VideoTagModel,
+)
+
+
+class SqlAlchemyVideoRepository(VideoRepository):
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def get_by_id(self, video_id: UUID) -> Video | None:
+        model = self._get_model(video_id)
+
+        if model is None:
+            return None
+
+        return video_model_to_domain(model)
+
+    def list_visible(
+        self,
+        *,
+        current_user_id: UUID | None,
+        filters: VideoListFilters,
+        limit: int,
+        offset: int,
+    ) -> VideoListResult:
+        conditions = self._list_conditions(current_user_id, filters)
+        statement = (
+            select(VideoModel)
+            .where(*conditions)
+            .options(
+                selectinload(VideoModel.category_assignments).selectinload(
+                    VideoCategoryAssignmentModel.category,
+                ),
+                selectinload(VideoModel.tag_assignments).selectinload(
+                    VideoTagAssignmentModel.tag,
+                ),
+            )
+            .order_by(VideoModel.favorite_count.desc(), VideoModel.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        count_statement = select(func.count(VideoModel.id)).where(*conditions)
+        models = self.session.scalars(statement).all()
+        total = self.session.scalar(count_statement) or 0
+
+        return VideoListResult(
+            items=[video_model_to_domain(model) for model in models],
+            total=total,
+        )
+
+    def create(self, video: VideoCreate) -> Video:
+        model = video_create_to_model(video)
+        self.session.add(model)
+        self.session.flush()
+
+        self._replace_category_assignments(model, video.category_ids)
+        self._replace_tag_assignments(model, video.tags)
+
+        video_id = UUID(model.id)
+        self.session.commit()
+        model = self._get_model(video_id)
+
+        return video_model_to_domain(model)
+
+    def update_metadata(
+        self,
+        video_id: UUID,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        is_registered_only: bool | None = None,
+        category_ids: list[UUID] | None = None,
+        tags: list[str] | None = None,
+    ) -> Video | None:
+        model = self._get_model(video_id)
+
+        if model is None:
+            return None
+
+        if title is not None:
+            model.title = title
+        if description is not None:
+            model.description = description
+        if is_registered_only is not None:
+            model.is_registered_only = is_registered_only
+        if category_ids is not None:
+            self._replace_category_assignments(model, category_ids)
+        if tags is not None:
+            self._replace_tag_assignments(model, tags)
+
+        model.edited = True
+        model.edited_at = datetime.now(timezone.utc)
+        self.session.commit()
+        model = self._get_model(video_id)
+
+        return video_model_to_domain(model)
+
+    def delete(self, video_id: UUID) -> bool:
+        model = self._get_model(video_id)
+
+        if model is None:
+            return False
+
+        self.session.delete(model)
+        self.session.commit()
+
+        return True
+
+    def add_favorite(self, video_id: UUID, user_id: UUID) -> None:
+        model = VideoFavoriteModel(video_id=str(video_id), user_id=str(user_id))
+        video_model = self.session.scalar(
+            select(VideoModel).where(VideoModel.id == str(video_id))
+        )
+        if video_model is None:
+            return
+
+        self.session.add(model)
+        try:
+            self.session.flush()
+        except IntegrityError:
+            self.session.rollback()
+            return
+
+        video_model.favorite_count += 1
+        self.session.commit()
+
+    def remove_favorite(self, video_id: UUID, user_id: UUID) -> None:
+        model = self.session.scalar(
+            select(VideoFavoriteModel).where(
+                VideoFavoriteModel.video_id == str(video_id),
+                VideoFavoriteModel.user_id == str(user_id),
+            )
+        )
+        if model is None:
+            return
+
+        video_model = self.session.scalar(
+            select(VideoModel).where(VideoModel.id == str(video_id))
+        )
+        self.session.delete(model)
+        if video_model is not None:
+            video_model.favorite_count = max(video_model.favorite_count - 1, 0)
+        self.session.commit()
+
+    def list_favorites(
+        self,
+        *,
+        user_id: UUID,
+        limit: int,
+        offset: int,
+    ) -> VideoListResult:
+        statement = (
+            select(VideoModel)
+            .join(VideoFavoriteModel, VideoFavoriteModel.video_id == VideoModel.id)
+            .where(VideoFavoriteModel.user_id == str(user_id))
+            .options(
+                selectinload(VideoModel.category_assignments).selectinload(
+                    VideoCategoryAssignmentModel.category,
+                ),
+                selectinload(VideoModel.tag_assignments).selectinload(
+                    VideoTagAssignmentModel.tag,
+                ),
+            )
+            .order_by(VideoFavoriteModel.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        count_statement = select(func.count(VideoFavoriteModel.id)).where(
+            VideoFavoriteModel.user_id == str(user_id)
+        )
+        models = self.session.scalars(statement).all()
+        total = self.session.scalar(count_statement) or 0
+
+        return VideoListResult(
+            items=[video_model_to_domain(model) for model in models],
+            total=total,
+        )
+
+    def is_favorite(self, video_id: UUID, user_id: UUID) -> bool:
+        statement = select(VideoFavoriteModel.id).where(
+            VideoFavoriteModel.video_id == str(video_id),
+            VideoFavoriteModel.user_id == str(user_id),
+        )
+
+        return self.session.scalar(statement) is not None
+
+    def set_reaction(
+        self,
+        video_id: UUID,
+        user_id: UUID,
+        reaction_type: str,
+    ) -> VideoReaction:
+        model = self.session.scalar(
+            select(VideoReactionModel).where(
+                VideoReactionModel.video_id == str(video_id),
+                VideoReactionModel.user_id == str(user_id),
+            )
+        )
+        if model is None:
+            model = VideoReactionModel(
+                video_id=str(video_id),
+                user_id=str(user_id),
+                reaction_type=reaction_type,
+            )
+            self.session.add(model)
+        else:
+            model.reaction_type = reaction_type
+
+        self.session.commit()
+        self.session.refresh(model)
+
+        return video_reaction_model_to_domain(model)
+
+    def remove_reaction(self, video_id: UUID, user_id: UUID) -> None:
+        model = self.session.scalar(
+            select(VideoReactionModel).where(
+                VideoReactionModel.video_id == str(video_id),
+                VideoReactionModel.user_id == str(user_id),
+            )
+        )
+        if model is None:
+            return
+
+        self.session.delete(model)
+        self.session.commit()
+
+    def get_reaction_counts(self, video_id: UUID) -> dict[str, int]:
+        statement = (
+            select(VideoReactionModel.reaction_type, func.count(VideoReactionModel.id))
+            .where(VideoReactionModel.video_id == str(video_id))
+            .group_by(VideoReactionModel.reaction_type)
+        )
+
+        return {reaction_type: count for reaction_type, count in self.session.execute(statement)}
+
+    def _get_model(self, video_id: UUID) -> VideoModel | None:
+        statement = (
+            select(VideoModel)
+            .where(VideoModel.id == str(video_id))
+            .options(
+                selectinload(VideoModel.category_assignments).selectinload(
+                    VideoCategoryAssignmentModel.category,
+                ),
+                selectinload(VideoModel.tag_assignments).selectinload(
+                    VideoTagAssignmentModel.tag,
+                ),
+            )
+        )
+
+        return self.session.scalar(statement)
+
+    def _list_conditions(
+        self,
+        current_user_id: UUID | None,
+        filters: VideoListFilters,
+    ) -> list:
+        conditions = []
+        if current_user_id is None:
+            conditions.append(VideoModel.is_registered_only.is_(False))
+        if filters.title:
+            conditions.append(VideoModel.title.ilike(f"%{filters.title}%"))
+        if filters.owner_id is not None:
+            conditions.append(VideoModel.owner_id == str(filters.owner_id))
+        if filters.category_ids:
+            conditions.append(
+                VideoModel.category_assignments.any(
+                    VideoCategoryAssignmentModel.category_id.in_(
+                        [str(category_id) for category_id in filters.category_ids]
+                    )
+                )
+            )
+        if filters.tags:
+            tag_names = [tag.strip() for tag in filters.tags if tag.strip()]
+            if tag_names:
+                conditions.append(
+                    VideoModel.tag_assignments.any(
+                        VideoTagAssignmentModel.tag.has(VideoTagModel.name.in_(tag_names))
+                    )
+                )
+
+        return conditions
+
+    def _replace_category_assignments(
+        self,
+        model: VideoModel,
+        category_ids: list[UUID],
+    ) -> None:
+        model.category_assignments.clear()
+        self.session.flush()
+        model.category_assignments.extend(
+            [
+                VideoCategoryAssignmentModel(
+                    video_id=model.id,
+                    category_id=str(category_id),
+                )
+                for category_id in category_ids
+            ]
+        )
+
+    def _replace_tag_assignments(self, model: VideoModel, tags: list[str]) -> None:
+        model.tag_assignments.clear()
+        self.session.flush()
+        model.tag_assignments.extend(
+            [
+                VideoTagAssignmentModel(
+                    video_id=model.id,
+                    tag_id=self._get_or_create_tag(tag).id,
+                )
+                for tag in dict.fromkeys(
+                    normalized for normalized in map(str.strip, tags) if normalized
+                )
+            ]
+        )
+
+    def _get_or_create_tag(self, name: str) -> VideoTagModel:
+        statement = select(VideoTagModel).where(VideoTagModel.name == name)
+        model = self.session.scalar(statement)
+
+        if model is not None:
+            return model
+
+        model = VideoTagModel(name=name)
+        self.session.add(model)
+        self.session.flush()
+
+        return model

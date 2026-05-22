@@ -15,6 +15,7 @@ from app.shared.infrastructure.logging import set_user_id
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+optional_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 
 def get_jwt_service() -> JwtService:
@@ -61,6 +62,30 @@ def get_current_user(
 
     if user is None or not user.is_active:
         raise credentials_error
+
+    set_user_id(str(user.id))
+
+    return user
+
+
+def get_optional_current_user(
+    token: str | None = Depends(optional_oauth2_scheme),
+    jwt_service: JwtService = Depends(get_jwt_service),
+    user_repository: UserRepository = Depends(get_user_repository),
+) -> User | None:
+    if token is None:
+        return None
+
+    try:
+        payload = jwt_service.decode_access_token(token)
+        user_id = UUID(payload["sub"])
+    except (JWTError, KeyError, ValueError):
+        return None
+
+    user = user_repository.get_by_id(user_id)
+
+    if user is None or not user.is_active:
+        return None
 
     set_user_id(str(user.id))
 

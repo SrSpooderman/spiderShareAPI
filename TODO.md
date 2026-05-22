@@ -2,7 +2,7 @@
 
 Este documento esta ordenado para avanzar sin bloquearse. Primero van las tareas que se pueden implementar ya. Despues aparece el punto donde hacen falta decisiones pendientes. Al final queda la lista de tareas que se podran implementar cuando esas preguntas esten respondidas.
 
-## 3. Videos - decisiones ya cerradas
+## 3. Videos - decisiones cerradas e implementar ya
 
 Estas reglas ya estan decididas y se pueden usar para disenar el modulo.
 
@@ -131,7 +131,9 @@ Estas reglas ya estan decididas y se pueden usar para disenar el modulo.
 - No se desactiva en v1.
 - Si el video esta marcado como solo registrados, el enlace exige login.
 
-## 4. Videos - implementar ya sin mas decisiones
+### Implementar ya sin mas decisiones
+
+Estado: implementado.
 
 Estas tareas no dependen de las preguntas pendientes.
 

@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     super_admin_password: str | None = None
     steam_web_api_key: str | None = None
     steam_web_api_base_url: str = "https://api.steampowered.com"
+    max_video_size_bytes: int | None = None
+    max_video_duration_seconds: int | None = None
+    max_video_tags: int = 6
+    video_allowed_mime_types: list[str] = []
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -7,6 +7,7 @@ from starlette.requests import Request
 from app.modules.auth.entrypoints.routes import router as auth_router
 from app.modules.steam.entrypoints.routes import router as steam_router
 from app.modules.users.entrypoints.routes import router as users_router
+from app.modules.videos.entrypoints.routes import router as videos_router
 from app.shared.infrastructure.logging import (
     configure_logging,
     new_request_id,
@@ -73,5 +74,6 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(users_router)
     app.include_router(steam_router)
+    app.include_router(videos_router)
 
     return app

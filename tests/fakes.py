@@ -1,10 +1,13 @@
+from dataclasses import replace
 from datetime import datetime
 from uuid import UUID
 
 from app.modules.steam.domain.steam_game import SteamGame, SteamGameCreate
 from app.modules.users.domain.user import User, UserCreate, UserRole
+from app.modules.videos.domain.ports import VideoListFilters, VideoListResult
+from app.modules.videos.domain.video import Video, VideoCreate, VideoReaction
 from app.shared.infrastructure.providers.steam.steam_client import SteamApiError
-from tests.factories import make_steam_game, make_user
+from tests.factories import make_steam_game, make_user, make_video, utc_now
 
 
 class FakeUserRepository:
@@ -133,6 +136,207 @@ class FakeSteamGameRepository:
 
         game.name = name
         return game
+
+
+class FakeVideoRepository:
+    def __init__(self, videos: list[Video] | None = None) -> None:
+        self.videos: dict[UUID, Video] = {}
+        self.created: list[VideoCreate] = []
+        self.updated: list[tuple[UUID, dict]] = []
+        self.deleted: list[UUID] = []
+        self.favorites: set[tuple[UUID, UUID]] = set()
+        self.reactions: dict[tuple[UUID, UUID], VideoReaction] = {}
+
+        for video in videos or []:
+            self.add(video)
+
+    def add(self, video: Video) -> Video:
+        self.videos[video.id] = video
+        return video
+
+    def get_by_id(self, video_id: UUID) -> Video | None:
+        return self.videos.get(video_id)
+
+    def list_visible(
+        self,
+        *,
+        current_user_id: UUID | None,
+        filters: VideoListFilters,
+        limit: int,
+        offset: int,
+    ) -> VideoListResult:
+        videos = [
+            video
+            for video in self.videos.values()
+            if current_user_id is not None or not video.is_registered_only
+        ]
+        if filters.title:
+            videos = [
+                video
+                for video in videos
+                if filters.title.lower() in video.title.lower()
+            ]
+        if filters.owner_id is not None:
+            videos = [video for video in videos if video.owner_id == filters.owner_id]
+        if filters.category_ids:
+            category_ids = set(filters.category_ids)
+            videos = [
+                video
+                for video in videos
+                if category_ids & {category.id for category in video.categories}
+            ]
+        if filters.tags:
+            tag_names = {tag.strip() for tag in filters.tags if tag.strip()}
+            videos = [
+                video
+                for video in videos
+                if tag_names & {tag.name for tag in video.tags}
+            ]
+
+        videos = sorted(
+            videos,
+            key=lambda video: (video.favorite_count, video.created_at),
+            reverse=True,
+        )
+
+        return VideoListResult(items=videos[offset : offset + limit], total=len(videos))
+
+    def create(self, video: VideoCreate) -> Video:
+        self.created.append(video)
+        return self.add(
+            make_video(
+                owner_id=video.owner_id,
+                title=video.title,
+                description=video.description,
+                original_filename=video.original_filename,
+                is_registered_only=video.is_registered_only,
+            )
+        )
+
+    def update_metadata(
+        self,
+        video_id: UUID,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        is_registered_only: bool | None = None,
+        category_ids: list[UUID] | None = None,
+        tags: list[str] | None = None,
+    ) -> Video | None:
+        video = self.videos.get(video_id)
+        if video is None:
+            return None
+
+        changes = {
+            "title": title,
+            "description": description,
+            "is_registered_only": is_registered_only,
+            "category_ids": category_ids,
+            "tags": tags,
+        }
+        self.updated.append((video_id, changes))
+
+        edited_at = utc_now()
+        updated_video = replace(
+            video,
+            title=title if title is not None else video.title,
+            description=description if description is not None else video.description,
+            is_registered_only=(
+                is_registered_only
+                if is_registered_only is not None
+                else video.is_registered_only
+            ),
+            edited=True,
+            edited_at=edited_at,
+            updated_at=edited_at,
+        )
+        self.videos[video_id] = updated_video
+
+        return updated_video
+
+    def delete(self, video_id: UUID) -> bool:
+        self.deleted.append(video_id)
+        return self.videos.pop(video_id, None) is not None
+
+    def add_favorite(self, video_id: UUID, user_id: UUID) -> None:
+        key = (video_id, user_id)
+        if key in self.favorites:
+            return
+
+        self.favorites.add(key)
+        video = self.videos.get(video_id)
+        if video is not None:
+            self.videos[video_id] = replace(
+                video,
+                favorite_count=video.favorite_count + 1,
+            )
+
+    def remove_favorite(self, video_id: UUID, user_id: UUID) -> None:
+        key = (video_id, user_id)
+        if key not in self.favorites:
+            return
+
+        self.favorites.remove(key)
+        video = self.videos.get(video_id)
+        if video is not None:
+            self.videos[video_id] = replace(
+                video,
+                favorite_count=max(video.favorite_count - 1, 0),
+            )
+
+    def list_favorites(
+        self,
+        *,
+        user_id: UUID,
+        limit: int,
+        offset: int,
+    ) -> VideoListResult:
+        videos = [
+            self.videos[video_id]
+            for video_id, favorite_user_id in self.favorites
+            if favorite_user_id == user_id and video_id in self.videos
+        ]
+        videos = sorted(videos, key=lambda video: video.created_at, reverse=True)
+
+        return VideoListResult(items=videos[offset : offset + limit], total=len(videos))
+
+    def is_favorite(self, video_id: UUID, user_id: UUID) -> bool:
+        return (video_id, user_id) in self.favorites
+
+    def set_reaction(
+        self,
+        video_id: UUID,
+        user_id: UUID,
+        reaction_type: str,
+    ) -> VideoReaction:
+        now = utc_now()
+        reaction = self.reactions.get((video_id, user_id))
+        if reaction is None:
+            reaction = VideoReaction(
+                id=make_user().id,
+                video_id=video_id,
+                user_id=user_id,
+                reaction_type=reaction_type,
+                created_at=now,
+                updated_at=now,
+            )
+        else:
+            reaction = replace(reaction, reaction_type=reaction_type, updated_at=now)
+
+        self.reactions[(video_id, user_id)] = reaction
+        return reaction
+
+    def remove_reaction(self, video_id: UUID, user_id: UUID) -> None:
+        self.reactions.pop((video_id, user_id), None)
+
+    def get_reaction_counts(self, video_id: UUID) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for (reaction_video_id, _user_id), reaction in self.reactions.items():
+            if reaction_video_id != video_id:
+                continue
+            counts[reaction.reaction_type] = counts.get(reaction.reaction_type, 0) + 1
+
+        return counts
 
 
 class FakePasswordHasher:
