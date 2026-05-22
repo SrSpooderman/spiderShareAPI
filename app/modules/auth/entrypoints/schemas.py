@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 from app.modules.auth.application.login import LoginResult
 from app.modules.auth.application.register import PublicUser
@@ -9,14 +9,30 @@ from app.modules.users.domain.user import User, UserRole
 
 
 class RegisterRequest(BaseModel):
-    username: str
-    password: str
+    username: str = Field(min_length=3, max_length=100)
+    password: str = Field(min_length=8, max_length=128)
     role: UserRole = UserRole.USER
+
+    @field_validator("username", mode="before")
+    @classmethod
+    def username_must_not_be_blank(cls, value: str) -> str:
+        username = value.strip()
+        if not username:
+            raise ValueError("username cannot be blank")
+        return username
 
 
 class LoginRequest(BaseModel):
-    username: str
-    password: str
+    username: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=1, max_length=128)
+
+    @field_validator("username", mode="before")
+    @classmethod
+    def username_must_not_be_blank(cls, value: str) -> str:
+        username = value.strip()
+        if not username:
+            raise ValueError("username cannot be blank")
+        return username
 
 
 class UserResponse(BaseModel):

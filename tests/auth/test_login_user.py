@@ -26,6 +26,8 @@ def test_login_user_returns_token_for_valid_credentials(
     assert result.user.username == "alice"
     assert access_token_service.users == [user]
     assert password_hasher.verified_passwords == [("secret", "hashed:secret")]
+    assert user.last_login_at is not None
+    assert user_repository.updated[0][1]["last_login_at"] == user.last_login_at
 
 
 @pytest.mark.unit

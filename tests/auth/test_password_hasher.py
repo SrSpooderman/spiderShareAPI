@@ -22,6 +22,13 @@ def test_password_hasher_rejects_wrong_password() -> None:
 
 
 @pytest.mark.unit
+def test_password_hasher_rejects_invalid_hash() -> None:
+    password_hasher = PasswordHasher()
+
+    assert password_hasher.verify_password("secret", "not-a-bcrypt-hash") is False
+
+
+@pytest.mark.unit
 def test_password_hasher_uses_salt() -> None:
     password_hasher = PasswordHasher()
 

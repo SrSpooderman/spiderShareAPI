@@ -1,9 +1,11 @@
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.modules.users.domain.ports import UserRepository
+from app.modules.users.domain.ports import UserPersistenceConflictError, UserRepository
 from app.modules.users.domain.user import User, UserCreate
 from app.modules.users.infrastructure.mappers import (
     user_create_to_model,
@@ -44,7 +46,11 @@ class SqlAlchemyUserRepository(UserRepository):
         model = user_create_to_model(user)
 
         self.session.add(model)
-        self.session.commit()
+        try:
+            self.session.commit()
+        except IntegrityError as error:
+            self.session.rollback()
+            raise UserPersistenceConflictError from error
         self.session.refresh(model)
 
         return user_model_to_domain(model)
@@ -60,6 +66,7 @@ class SqlAlchemyUserRepository(UserRepository):
         password_hash: str | None = None,
         role: str | None = None,
         is_active: bool | None = None,
+        last_login_at: datetime | None = None,
         clear_display_name: bool = False,
         clear_bio: bool = False,
         clear_avatar_image: bool = False,
@@ -84,8 +91,14 @@ class SqlAlchemyUserRepository(UserRepository):
             model.role = role
         if is_active is not None:
             model.is_active = is_active
+        if last_login_at is not None:
+            model.last_login_at = last_login_at
 
-        self.session.commit()
+        try:
+            self.session.commit()
+        except IntegrityError as error:
+            self.session.rollback()
+            raise UserPersistenceConflictError from error
         self.session.refresh(model)
 
         return user_model_to_domain(model)

@@ -18,6 +18,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Destructive by design: back up this table before applying in production.
     op.drop_table("user_steam_accounts")
 
 

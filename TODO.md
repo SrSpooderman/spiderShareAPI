@@ -2,61 +2,7 @@
 
 Este documento esta ordenado para avanzar sin bloquearse. Primero van las tareas que se pueden implementar ya. Despues aparece el punto donde hacen falta decisiones pendientes. Al final queda la lista de tareas que se podran implementar cuando esas preguntas esten respondidas.
 
-## 1. Robustez de API
-
-Estas tareas se pueden hacer ya, antes del modulo de videos.
-
-1. Gestionar hashes de password invalidos.
-   - `PasswordHasher.verify_password` puede lanzar error si el hash guardado no es bcrypt valido.
-   - Hacer que devuelva `False` en vez de provocar un `500`.
-
-2. Validar campos de entrada.
-   - Anadir limites y minimos con Pydantic para `username`, `password`, `new_password`, `display_name` y `bio`.
-   - Evitar strings vacios o demasiado largos que puedan acabar en errores SQL.
-   - Normalizar/recortar `username` si se decide permitir espacios accidentales.
-
-3. Capturar conflictos reales de base de datos.
-   - El registro y el cambio de username comprueban duplicados antes de guardar, pero dos requests simultaneas pueden saltarse esa comprobacion.
-   - Capturar `IntegrityError` y devolver `409 Conflict`.
-
-4. Revisar borrado de usuarios `super_admin`.
-   - Ahora un `super_admin` podria borrarse a si mismo.
-   - Decidir si se bloquea siempre, o como minimo impedir borrar el ultimo `super_admin`.
-
-5. Actualizar `last_login_at`.
-   - El campo existe pero no se actualiza al hacer login.
-   - Guardar la fecha/hora de login correcto.
-
-6. Validar avatares por contenido real.
-   - El endpoint valida `content_type`, que lo envia el cliente y se puede falsificar.
-   - Validar tambien la firma real del archivo despues de leer los bytes.
-
-7. Aclarar endpoint de juegos de Steam.
-   - La ruta parece publica por nombre/documentacion, pero exige usuario autenticado.
-   - Decidir si debe ser publica o protegida, y alinear codigo y README.
-
-8. Revisar migracion que borra `user_steam_accounts`.
-   - Confirmar que perder esos vinculos es intencionado.
-   - Hacer backup antes de aplicar en produccion.
-
-## 2. Logging y observabilidad
-
-Estas tareas tambien se pueden hacer ya.
-
-1. Crear configuracion central de logging para toda la API.
-2. Usar logs legibles en consola para desarrollo.
-3. Incluir nivel, timestamp, modulo, metodo, ruta y status code.
-4. Anadir `request_id` si se implementa middleware para ello.
-5. Registrar errores con stacktrace cuando proceda.
-6. Evitar `print` sueltos y mensajes basicos dificiles de rastrear.
-7. Separar niveles:
-   - `INFO` para arranque y requests importantes.
-   - `WARNING` para casos recuperables.
-   - `ERROR` para fallos.
-8. Revisar logs de Uvicorn/FastAPI para que no queden duplicados ni desordenados.
-9. Opcional: preparar formato JSON para produccion si Portainer o el sistema de logs lo aprovecha.
-
-## 3. Videos - decisiones ya cerradas
+## 3. Videos - decisiones cerradas e implementar ya
 
 Estas reglas ya estan decididas y se pueden usar para disenar el modulo.
 
@@ -139,6 +85,10 @@ Estas reglas ya estan decididas y se pueden usar para disenar el modulo.
   - Calcular metadata real.
   - Generar thumbnail.
   - Normalizar compatibilidad de reproduccion.
+- Para clips de Cliponomicon deben generarse como minimo dos variantes:
+  - Resolucion original en AV1.
+  - Resolucion menor en H.264.
+- La API debe poder exponer las variantes disponibles para que el cliente elija o haga fallback.
 - Consecuencia tecnica:
   - Se necesitara FFmpeg u otro procesador.
   - Puede hacer falta estado `processing`.
@@ -181,114 +131,6 @@ Estas reglas ya estan decididas y se pueden usar para disenar el modulo.
 - No se desactiva en v1.
 - Si el video esta marcado como solo registrados, el enlace exige login.
 
-## 4. Videos - implementar ya sin mas decisiones
-
-Estas tareas no dependen de las preguntas pendientes.
-
-1. Crear estructura del modulo.
-
-```text
-app/modules/videos/
-  domain/
-    video.py
-    ports.py
-  application/
-    list_videos.py
-    get_video.py
-    update_video.py
-    delete_video.py
-    favorite_video.py
-    react_to_video.py
-  entrypoints/
-    routes.py
-    schemas.py
-  infrastructure/
-    models.py
-    mappers.py
-    repository.py
-  wiring.py
-```
-
-2. Anadir settings del modulo en `config/settings.py`.
-   - `max_video_size_bytes`
-   - `max_video_duration_seconds`
-   - `max_video_tags = 6`
-   - `video_allowed_mime_types`
-   - `video_storage_path` si no se reutiliza `VIDEO_STORAGE_PATH`.
-
-3. Crear dominio base.
-   - Entidad `Video`.
-   - Entidad `VideoCreate`.
-   - Entidad `VideoCategory`.
-   - Entidad `VideoTag`.
-   - Entidad `VideoFavorite`.
-   - Entidad `VideoReaction`.
-   - Enum/valor de `aspect_ratio`: `4:3`, `16:9`, `21:9`.
-   - Campo `is_registered_only`.
-   - Campo `edited`.
-   - Campo `edited_at`.
-   - Campo `processing_status`: recomendado por transcodificacion.
-
-4. Crear reglas de permisos.
-   - Ver video publico: anonimos y logeados.
-   - Ver video solo registrados: usuarios logeados.
-   - Editar: propietario o `admin`/`super_admin`.
-   - Borrar: propietario o `super_admin`.
-   - Favorito/reaccion: solo usuario logeado.
-
-5. Crear modelos SQLAlchemy.
-   - `videos`
-   - `video_categories`
-   - `video_category_assignments`
-   - `video_tags`
-   - `video_tag_assignments`
-   - `video_favorites`
-   - `video_reactions`
-
-6. Crear mappers model/domain.
-7. Crear repositorio SQLAlchemy.
-8. Crear migracion Alembic para las tablas anteriores.
-9. Crear schemas Pydantic de respuesta y payloads de metadata.
-10. Crear casos de uso que no dependen del archivo todavia.
-    - `ListVideos`
-    - `GetVideo`
-    - `UpdateVideo`
-    - `DeleteVideo` solo borrado logico/metadata hasta decidir borrado fisico.
-    - `FavoriteVideo`
-    - `ReactToVideo`
-
-11. Crear rutas que no dependen del contrato de subida/Node.
-    - `GET /videos`
-    - `GET /videos/{video_id}`
-    - `PATCH /videos/{video_id}`
-    - `DELETE /videos/{video_id}`
-    - `POST /videos/{video_id}/favorite`
-    - `DELETE /videos/{video_id}/favorite`
-    - `GET /users/me/video-favorites`
-    - `GET /videos/{video_id}/reactions`
-    - `POST /videos/{video_id}/reactions`
-    - `DELETE /videos/{video_id}/reactions`
-
-12. Implementar paginacion y filtros.
-    - Por titulo.
-    - Por tags.
-    - Por categorias.
-    - Por usuario creador.
-
-13. Implementar orden inicial de popularidad con formula temporal.
-    - Usar `favorite_count` descendente.
-    - Dejar TODO para formula final.
-
-14. Crear tests.
-    - Permisos.
-    - Paginacion.
-    - Filtros.
-    - Favoritos.
-    - Reacciones.
-    - Edicion y `edited=true`.
-    - Borrado por propietario y `super_admin`.
-    - Bloqueo de borrado por `admin`.
-
 ## 5. Punto de bloqueo: preguntas a responder
 
 Responder estas preguntas antes de implementar subida, transcodificacion real, playback y borrado fisico.
@@ -329,6 +171,9 @@ Estas tareas dependen de las respuestas anteriores.
 3. Implementar transcodificacion.
    - Integrar FFmpeg u otro procesador.
    - Convertir a formato web final.
+   - Generar variante a resolucion original en AV1 para clips de Cliponomicon.
+   - Generar variante de menor resolucion en H.264 para clips de Cliponomicon.
+   - Guardar metadata de variantes disponibles: codec, resolucion, ancho, alto, bitrate aproximado, tamano y URL/ruta.
    - Generar thumbnail.
    - Calcular duracion real.
    - Calcular `width`, `height` y `aspect_ratio`.

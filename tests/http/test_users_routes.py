@@ -138,6 +138,27 @@ def test_patch_user_updates_profile_fields(
 
 
 @pytest.mark.http
+def test_patch_user_rejects_blank_profile_fields(
+    app,
+    client,
+    user_factory,
+    user_repository,
+) -> None:
+    current_user = user_factory(username="alice")
+    user_repository.add(current_user)
+    app.dependency_overrides[get_current_user] = lambda: current_user
+    app.dependency_overrides[get_user_repository] = lambda: user_repository
+
+    response = client.patch(
+        f"/users/{current_user.id}",
+        json={"display_name": "   "},
+    )
+
+    assert response.status_code == 422
+    assert user_repository.updated == []
+
+
+@pytest.mark.http
 def test_change_password_requires_current_password_for_self(
     app,
     client,
@@ -153,7 +174,7 @@ def test_change_password_requires_current_password_for_self(
 
     response = client.patch(
         f"/users/{current_user.id}/password",
-        json={"new_password": "new"},
+        json={"new_password": "newsecret"},
     )
 
     assert response.status_code == 400
@@ -177,11 +198,11 @@ def test_change_password_updates_hash_with_valid_current_password(
 
     response = client.patch(
         f"/users/{current_user.id}/password",
-        json={"current_password": "old", "new_password": "new"},
+        json={"current_password": "old", "new_password": "newsecret"},
     )
 
     assert response.status_code == 204
-    assert current_user.password_hash == "hashed:new"
+    assert current_user.password_hash == "hashed:newsecret"
     assert password_hasher.verified_passwords == [("old", "hashed:old")]
 
 
@@ -204,6 +225,28 @@ def test_update_avatar_rejects_non_image_content(
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Avatar must be an image"
+
+
+@pytest.mark.http
+def test_update_avatar_rejects_faked_image_content(
+    app,
+    client,
+    user_factory,
+    user_repository,
+) -> None:
+    current_user = user_factory(username="alice")
+    user_repository.add(current_user)
+    app.dependency_overrides[get_current_user] = lambda: current_user
+    app.dependency_overrides[get_user_repository] = lambda: user_repository
+
+    response = client.put(
+        f"/users/{current_user.id}/avatar",
+        files={"avatar": ("avatar.png", b"not really an image", "image/png")},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Avatar must be a supported image"
+    assert current_user.avatar_image is None
 
 
 @pytest.mark.http
@@ -249,3 +292,22 @@ def test_delete_user_returns_204_for_manageable_user(
 
     assert response.status_code == 204
     assert user_repository.get_by_id(target_user.id) is None
+
+
+@pytest.mark.http
+def test_delete_user_blocks_super_admin_self_delete(
+    app,
+    client,
+    user_factory,
+    user_repository,
+) -> None:
+    current_user = user_factory(username="root", role=UserRole.SUPER_ADMIN)
+    user_repository.add(current_user)
+    app.dependency_overrides[get_current_user] = lambda: current_user
+    app.dependency_overrides[get_user_repository] = lambda: user_repository
+
+    response = client.delete(f"/users/{current_user.id}")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Not allowed to delete a super admin"
+    assert user_repository.get_by_id(current_user.id) == current_user

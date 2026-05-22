@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.modules.auth.wiring import get_current_user
 from app.modules.steam.application.store_steam_game import (
     InvalidSteamGameError,
     StoreSteamGame,
@@ -13,7 +12,6 @@ from app.modules.steam.wiring import (
     get_store_steam_game,
     get_steam_client,
 )
-from app.modules.users.domain.user import User
 from app.shared.infrastructure.providers.steam.steam_client import (
     SteamApiConfigurationError,
     SteamApiError,
@@ -32,7 +30,6 @@ def get_public_steam_user_games(
     steam_id_or_vanity: str,
     include_played_free_games: bool = Query(default=True),
     language: str = Query(default="english"),
-    _current_user: User = Depends(get_current_user),
     steam_client: SteamClient = Depends(get_steam_client),
     store_steam_game: StoreSteamGame = Depends(get_store_steam_game),
 ) -> SteamOwnedGamesResponse:

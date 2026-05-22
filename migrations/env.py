@@ -9,6 +9,15 @@ from config.settings import settings
 # Models
 from app.modules.steam.infrastructure.models import SteamGameModel
 from app.modules.users.infrastructure.models import UserModel
+from app.modules.videos.infrastructure.models import (
+    VideoCategoryAssignmentModel,
+    VideoCategoryModel,
+    VideoFavoriteModel,
+    VideoModel,
+    VideoReactionModel,
+    VideoTagAssignmentModel,
+    VideoTagModel,
+)
 
 
 config = context.config

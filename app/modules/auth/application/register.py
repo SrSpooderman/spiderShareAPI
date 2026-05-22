@@ -3,7 +3,7 @@ from datetime import datetime
 from uuid import UUID
 
 from app.modules.auth.application.password_hasher import PasswordHasher
-from app.modules.users.domain.ports import UserRepository
+from app.modules.users.domain.ports import UserPersistenceConflictError, UserRepository
 from app.modules.users.domain.user import User, UserCreate, UserRole
 
 
@@ -58,7 +58,10 @@ class RegisterUser:
             role=command.role,
         )
 
-        created_user = self.user_repository.create(user)
+        try:
+            created_user = self.user_repository.create(user)
+        except UserPersistenceConflictError:
+            raise UsernameAlreadyExistsError
 
         return user_to_public(created_user)
 

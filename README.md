@@ -253,7 +253,7 @@ Reglas principales:
 
 | Metodo | Ruta | Descripcion |
 | --- | --- | --- |
-| `GET` | `/steam/users/{steam_id_or_vanity}/games` | Consulta juegos publicos de Steam. |
+| `GET` | `/steam/users/{steam_id_or_vanity}/games` | Consulta publica de juegos publicos de Steam. No requiere login. |
 
 `steam_id_or_vanity` acepta SteamID64, vanity name o URLs de Steam tipo `/id/...` y `/profiles/...`.
 

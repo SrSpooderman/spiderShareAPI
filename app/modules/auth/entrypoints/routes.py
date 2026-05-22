@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.modules.auth.application.login import (
@@ -27,6 +29,7 @@ from app.modules.users.domain.user import User, can_create_user_with_role
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 
 @router.post(
@@ -75,12 +78,14 @@ def login(
             )
         )
     except InvalidCredentialsError:
+        logger.warning("Login failed reason=invalid_credentials")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
     except InactiveUserError:
+        logger.warning("Login failed reason=inactive_user")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Inactive user",
