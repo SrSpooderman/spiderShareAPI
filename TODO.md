@@ -2,23 +2,6 @@
 
 Este documento esta ordenado para avanzar sin bloquearse. Primero van las tareas que se pueden implementar ya. Despues aparece el punto donde hacen falta decisiones pendientes. Al final queda la lista de tareas que se podran implementar cuando esas preguntas esten respondidas.
 
-## 2. Logging y observabilidad
-
-Estas tareas tambien se pueden hacer ya.
-
-1. Crear configuracion central de logging para toda la API.
-2. Usar logs legibles en consola para desarrollo.
-3. Incluir nivel, timestamp, modulo, metodo, ruta y status code.
-4. Anadir `request_id` si se implementa middleware para ello.
-5. Registrar errores con stacktrace cuando proceda.
-6. Evitar `print` sueltos y mensajes basicos dificiles de rastrear.
-7. Separar niveles:
-   - `INFO` para arranque y requests importantes.
-   - `WARNING` para casos recuperables.
-   - `ERROR` para fallos.
-8. Revisar logs de Uvicorn/FastAPI para que no queden duplicados ni desordenados.
-9. Opcional: preparar formato JSON para produccion si Portainer o el sistema de logs lo aprovecha.
-
 ## 3. Videos - decisiones ya cerradas
 
 Estas reglas ya estan decididas y se pueden usar para disenar el modulo.
