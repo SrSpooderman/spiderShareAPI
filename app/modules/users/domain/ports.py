@@ -1,6 +1,11 @@
 from abc import ABC, abstractmethod
+from datetime import datetime
 from uuid import UUID
 from app.modules.users.domain.user import User, UserCreate
+
+
+class UserPersistenceConflictError(Exception):
+    pass
 
 
 class UserRepository(ABC):
@@ -32,6 +37,7 @@ class UserRepository(ABC):
         password_hash: str | None = None,
         role: str | None = None,
         is_active: bool | None = None,
+        last_login_at: datetime | None = None,
         clear_display_name: bool = False,
         clear_bio: bool = False,
         clear_avatar_image: bool = False,

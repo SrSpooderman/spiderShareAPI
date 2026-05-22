@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Protocol
 
 from app.modules.auth.application.password_hasher import PasswordHasher
@@ -55,6 +56,13 @@ class LoginUser:
 
         if not user.is_active:
             raise InactiveUserError
+
+        updated_user = self.user_repository.update(
+            user.id,
+            last_login_at=datetime.now(timezone.utc),
+        )
+        if updated_user is not None:
+            user = updated_user
 
         return LoginResult(
             access_token=self.access_token_service.create_access_token(user),

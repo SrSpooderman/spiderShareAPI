@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 from app.modules.users.domain.user import User, UserRole
 
@@ -39,13 +39,35 @@ class UserResponse(BaseModel):
 
 
 class UserUpdateRequest(BaseModel):
-    username: str | None = None
-    display_name: str | None = None
-    bio: str | None = None
+    username: str | None = Field(default=None, min_length=3, max_length=100)
+    display_name: str | None = Field(default=None, min_length=1, max_length=120)
+    bio: str | None = Field(default=None, min_length=1, max_length=500)
     role: UserRole | None = None
     is_active: bool | None = None
 
+    @field_validator("username", mode="before")
+    @classmethod
+    def username_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+
+        username = value.strip()
+        if not username:
+            raise ValueError("username cannot be blank")
+        return username
+
+    @field_validator("display_name", "bio", mode="before")
+    @classmethod
+    def optional_text_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+
+        text = value.strip()
+        if not text:
+            raise ValueError("value cannot be blank")
+        return text
+
 
 class PasswordChangeRequest(BaseModel):
-    current_password: str | None = None
-    new_password: str
+    current_password: str | None = Field(default=None, min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)

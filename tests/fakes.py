@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from app.modules.steam.domain.steam_game import SteamGame, SteamGameCreate
@@ -56,6 +57,7 @@ class FakeUserRepository:
         password_hash: str | None = None,
         role: str | None = None,
         is_active: bool | None = None,
+        last_login_at: datetime | None = None,
         clear_display_name: bool = False,
         clear_bio: bool = False,
         clear_avatar_image: bool = False,
@@ -72,6 +74,7 @@ class FakeUserRepository:
             "password_hash": password_hash,
             "role": role,
             "is_active": is_active,
+            "last_login_at": last_login_at,
             "clear_display_name": clear_display_name,
             "clear_bio": clear_bio,
             "clear_avatar_image": clear_avatar_image,
@@ -92,6 +95,8 @@ class FakeUserRepository:
             user.role = UserRole(role)
         if is_active is not None:
             user.is_active = is_active
+        if last_login_at is not None:
+            user.last_login_at = last_login_at
 
         return user
 

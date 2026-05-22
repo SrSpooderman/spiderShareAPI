@@ -2,43 +2,6 @@
 
 Este documento esta ordenado para avanzar sin bloquearse. Primero van las tareas que se pueden implementar ya. Despues aparece el punto donde hacen falta decisiones pendientes. Al final queda la lista de tareas que se podran implementar cuando esas preguntas esten respondidas.
 
-## 1. Robustez de API
-
-Estas tareas se pueden hacer ya, antes del modulo de videos.
-
-1. Gestionar hashes de password invalidos.
-   - `PasswordHasher.verify_password` puede lanzar error si el hash guardado no es bcrypt valido.
-   - Hacer que devuelva `False` en vez de provocar un `500`.
-
-2. Validar campos de entrada.
-   - Anadir limites y minimos con Pydantic para `username`, `password`, `new_password`, `display_name` y `bio`.
-   - Evitar strings vacios o demasiado largos que puedan acabar en errores SQL.
-   - Normalizar/recortar `username` si se decide permitir espacios accidentales.
-
-3. Capturar conflictos reales de base de datos.
-   - El registro y el cambio de username comprueban duplicados antes de guardar, pero dos requests simultaneas pueden saltarse esa comprobacion.
-   - Capturar `IntegrityError` y devolver `409 Conflict`.
-
-4. Revisar borrado de usuarios `super_admin`.
-   - Ahora un `super_admin` podria borrarse a si mismo.
-   - Decidir si se bloquea siempre, o como minimo impedir borrar el ultimo `super_admin`.
-
-5. Actualizar `last_login_at`.
-   - El campo existe pero no se actualiza al hacer login.
-   - Guardar la fecha/hora de login correcto.
-
-6. Validar avatares por contenido real.
-   - El endpoint valida `content_type`, que lo envia el cliente y se puede falsificar.
-   - Validar tambien la firma real del archivo despues de leer los bytes.
-
-7. Aclarar endpoint de juegos de Steam.
-   - La ruta parece publica por nombre/documentacion, pero exige usuario autenticado.
-   - Decidir si debe ser publica o protegida, y alinear codigo y README.
-
-8. Revisar migracion que borra `user_steam_accounts`.
-   - Confirmar que perder esos vinculos es intencionado.
-   - Hacer backup antes de aplicar en produccion.
-
 ## 2. Logging y observabilidad
 
 Estas tareas tambien se pueden hacer ya.
@@ -139,6 +102,10 @@ Estas reglas ya estan decididas y se pueden usar para disenar el modulo.
   - Calcular metadata real.
   - Generar thumbnail.
   - Normalizar compatibilidad de reproduccion.
+- Para clips de Cliponomicon deben generarse como minimo dos variantes:
+  - Resolucion original en AV1.
+  - Resolucion menor en H.264.
+- La API debe poder exponer las variantes disponibles para que el cliente elija o haga fallback.
 - Consecuencia tecnica:
   - Se necesitara FFmpeg u otro procesador.
   - Puede hacer falta estado `processing`.
@@ -329,6 +296,9 @@ Estas tareas dependen de las respuestas anteriores.
 3. Implementar transcodificacion.
    - Integrar FFmpeg u otro procesador.
    - Convertir a formato web final.
+   - Generar variante a resolucion original en AV1 para clips de Cliponomicon.
+   - Generar variante de menor resolucion en H.264 para clips de Cliponomicon.
+   - Guardar metadata de variantes disponibles: codec, resolucion, ancho, alto, bitrate aproximado, tamano y URL/ruta.
    - Generar thumbnail.
    - Calcular duracion real.
    - Calcular `width`, `height` y `aspect_ratio`.

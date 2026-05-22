@@ -68,7 +68,7 @@ def test_login_returns_token_for_valid_credentials(app, client, user_factory) ->
 
     response = client.post(
         "/auth/login",
-        json={"username": "alice", "password": "secret"},
+        json={"username": "alice", "password": "supersecret"},
     )
 
     assert response.status_code == 200
@@ -76,7 +76,7 @@ def test_login_returns_token_for_valid_credentials(app, client, user_factory) ->
     assert response.json()["token_type"] == "bearer"
     assert response.json()["user"]["username"] == "alice"
     assert login_user.command.username == "alice"
-    assert login_user.command.password == "secret"
+    assert login_user.command.password == "supersecret"
 
 
 @pytest.mark.http
@@ -103,7 +103,7 @@ def test_login_returns_403_for_inactive_user(app, client) -> None:
 
     response = client.post(
         "/auth/login",
-        json={"username": "alice", "password": "secret"},
+        json={"username": "alice", "password": "supersecret"},
     )
 
     assert response.status_code == 403
@@ -150,13 +150,13 @@ def test_register_returns_created_user_for_allowed_role(
 
     response = client.post(
         "/auth/register",
-        json={"username": "alice", "password": "secret", "role": "user"},
+        json={"username": "alice", "password": "supersecret", "role": "user"},
     )
 
     assert response.status_code == 201
     assert response.json()["username"] == "alice"
     assert register_user.command.username == "alice"
-    assert register_user.command.password == "secret"
+    assert register_user.command.password == "supersecret"
     assert register_user.command.role == UserRole.USER
 
 
@@ -172,7 +172,7 @@ def test_register_returns_403_when_role_is_not_allowed(
 
     response = client.post(
         "/auth/register",
-        json={"username": "boss", "password": "secret", "role": "admin"},
+        json={"username": "boss", "password": "supersecret", "role": "admin"},
     )
 
     assert response.status_code == 403
@@ -193,8 +193,24 @@ def test_register_returns_409_when_username_exists(
 
     response = client.post(
         "/auth/register",
-        json={"username": "alice", "password": "secret", "role": "user"},
+        json={"username": "alice", "password": "supersecret", "role": "user"},
     )
 
     assert response.status_code == 409
     assert response.json()["detail"] == "Username already exists"
+
+
+@pytest.mark.http
+def test_register_rejects_blank_username(app, client, user_factory) -> None:
+    admin = user_factory(username="admin", role=UserRole.ADMIN)
+    app.dependency_overrides[require_admin] = lambda: admin
+    register_user = StubRegisterUser()
+    app.dependency_overrides[get_register_user] = lambda: register_user
+
+    response = client.post(
+        "/auth/register",
+        json={"username": "   ", "password": "supersecret", "role": "user"},
+    )
+
+    assert response.status_code == 422
+    assert not hasattr(register_user, "command")

@@ -5,7 +5,7 @@ from fastapi.responses import Response
 
 from app.modules.auth.application.password_hasher import PasswordHasher
 from app.modules.auth.wiring import get_current_user, get_password_hasher, require_admin
-from app.modules.users.domain.ports import UserRepository
+from app.modules.users.domain.ports import UserPersistenceConflictError, UserRepository
 from app.modules.users.domain.user import (
     User,
     UserRole,
@@ -36,6 +36,15 @@ def _detect_image_media_type(image: bytes) -> str:
         return "image/webp"
 
     return "application/octet-stream"
+
+
+def _is_supported_image(image: bytes) -> bool:
+    return _detect_image_media_type(image) in {
+        "image/jpeg",
+        "image/png",
+        "image/gif",
+        "image/webp",
+    }
 
 
 def _fields_set(request: UserUpdateRequest) -> set[str]:
@@ -145,16 +154,24 @@ def update_user(
     if request.username is not None:
         _ensure_unique_username(request.username, target_user, user_repository)
 
-    updated_user = user_repository.update(
-        user_id,
-        username=request.username if "username" in fields_set else None,
-        display_name=request.display_name if "display_name" in fields_set else None,
-        bio=request.bio if "bio" in fields_set else None,
-        role=request.role.value if request.role is not None else None,
-        is_active=request.is_active if "is_active" in fields_set else None,
-        clear_display_name="display_name" in fields_set and request.display_name is None,
-        clear_bio="bio" in fields_set and request.bio is None,
-    )
+    try:
+        updated_user = user_repository.update(
+            user_id,
+            username=request.username if "username" in fields_set else None,
+            display_name=request.display_name if "display_name" in fields_set else None,
+            bio=request.bio if "bio" in fields_set else None,
+            role=request.role.value if request.role is not None else None,
+            is_active=request.is_active if "is_active" in fields_set else None,
+            clear_display_name=(
+                "display_name" in fields_set and request.display_name is None
+            ),
+            clear_bio="bio" in fields_set and request.bio is None,
+        )
+    except UserPersistenceConflictError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Username already exists",
+        )
 
     if updated_user is None:
         raise HTTPException(
@@ -191,6 +208,11 @@ async def update_avatar(
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail="Avatar image is too large",
+        )
+    if not _is_supported_image(avatar_image):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Avatar must be a supported image",
         )
 
     updated_user = user_repository.update(user_id, avatar_image=avatar_image)
@@ -284,9 +306,9 @@ def delete_user(
     user_repository: UserRepository = Depends(get_user_repository),
 ) -> Response:
     target_user = _get_target_user(user_id, user_repository)
-    is_self = _ensure_can_access_target(current_user, target_user)
+    _ensure_can_access_target(current_user, target_user)
 
-    if target_user.role == UserRole.SUPER_ADMIN and not is_self:
+    if target_user.role == UserRole.SUPER_ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not allowed to delete a super admin",
