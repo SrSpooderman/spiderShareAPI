@@ -16,6 +16,7 @@ from app.shared.infrastructure.logging import (
     set_request_id,
     set_user_id,
 )
+from config.settings import settings
 
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,10 @@ def create_app() -> FastAPI:
     @app.get("/health")
     def health_check() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/version")
+    def version() -> dict[str, str]:
+        return {"version": settings.app_version}
 
     app.include_router(auth_router)
     app.include_router(users_router)

@@ -1,5 +1,7 @@
 # SpiderShare API
 
+Versión 1.0.0 - primera release estable.
+
 API backend de SpiderShare construida con FastAPI, SQLAlchemy, Alembic y MySQL. El proyecto esta organizado por modulos de negocio para que sea facil anadir nuevas areas sin mezclar rutas, casos de uso, dominio e infraestructura.
 
 Ahora mismo incluye:
@@ -7,12 +9,11 @@ Ahora mismo incluye:
 - Autenticacion con JWT.
 - Gestion de usuarios, roles, passwords y avatares.
 - Integracion con Steam para consultar juegos publicos.
+- Gestion de videos: upload, listado, descarga, streaming, miniaturas, favoritos y reacciones.
 - Migraciones automaticas con Alembic.
 - Seed automatico de super admin.
 - Tests unitarios y HTTP aislados de base de datos y red.
 - Deploy mediante webhook de Portainer despues de pasar tests en CI/CD.
-
-Los videos todavia no estan implementados como modulo completo. El proyecto ya reserva `VIDEO_STORAGE_PATH` y volumen de almacenamiento para esa futura parte.
 
 ## Stack
 
@@ -149,6 +150,7 @@ Importante: cambia `SECRET_KEY`, passwords de MySQL y credenciales del super adm
 | Variable | Uso |
 | --- | --- |
 | `APP_NAME` | Nombre de la aplicacion. |
+| `APP_VERSION` | Version de la aplicacion. |
 | `APP_ENV` | Entorno logico: `local`, `development`, `production`, etc. |
 | `APP_DEBUG` | Flag de debug. |
 | `APP_PORT` | Puerto expuesto por Docker. |
@@ -227,6 +229,7 @@ Reglas principales:
 | Metodo | Ruta | Descripcion |
 | --- | --- | --- |
 | `GET` | `/health` | Estado basico de la API. |
+| `GET` | `/version` | Version de la aplicacion. |
 
 ### Auth
 
@@ -248,6 +251,25 @@ Reglas principales:
 | `GET` | `/users/{user_id}/avatar` | Descarga avatar. |
 | `DELETE` | `/users/{user_id}/avatar` | Elimina avatar. |
 | `DELETE` | `/users/{user_id}` | Elimina usuario. |
+
+### Videos
+
+| Metodo | Ruta | Descripcion |
+| --- | --- | --- |
+| `POST` | `/videos` | Sube un video con titulo, descripcion, categorias y etiquetas. |
+| `GET` | `/videos` | Lista videos publicos y privados segun permisos. |
+| `GET` | `/videos/{video_id}` | Obtiene datos del video. |
+| `GET` | `/videos/{video_id}/download` | Descarga el archivo original. |
+| `GET` | `/videos/{video_id}/stream` | Reproduce un variante transcodificado. |
+| `GET` | `/videos/{video_id}/thumbnail` | Obtiene miniatura JPEG. |
+| `PATCH` | `/videos/{video_id}` | Actualiza metadatos del video. |
+| `DELETE` | `/videos/{video_id}` | Elimina el video. |
+| `POST` | `/videos/{video_id}/favorite` | Marca el video como favorito. |
+| `DELETE` | `/videos/{video_id}/favorite` | Quita el video de favoritos. |
+| `GET` | `/users/me/video-favorites` | Lista los videos favoritos del usuario autenticado. |
+| `GET` | `/videos/{video_id}/reactions` | Lista conteos de reacciones del video. |
+| `POST` | `/videos/{video_id}/reactions` | Agrega o actualiza una reaccion. |
+| `DELETE` | `/videos/{video_id}/reactions` | Elimina la reaccion del usuario. |
 
 ### Steam
 
@@ -378,16 +400,21 @@ Pasos recomendados:
 9. Crea una migracion Alembic.
 10. Anade tests unitarios primero y HTTP despues.
 
-## Futuro modulo de videos
+## Modulo de videos
 
-Ya existe preparacion minima:
+El proyecto ya incluye un modulo de videos con soporte para:
 
-- `VIDEO_STORAGE_PATH`.
-- Volumen Docker `video_storage`.
-- Carpeta `storage/videos`.
-- Archivo reservado `app/shared/infrastructure/providers/storage/video_storage.py`.
+- Subida de videos con metadata y tags.
+- Listado de videos con filtros de titulo, tags y categorias.
+- Descarga del archivo original.
+- Streaming de variantes transcodificadas.
+- Miniaturas JPEG.
+- Favoritos y reacciones por usuario.
+- Control de acceso para videos privados y registrados.
 
-Una implementacion limpia podria ser:
+El almacenamiento de videos usa `VIDEO_STORAGE_PATH` y la carpeta `storage/videos`.
+
+Una implementacion limpia utiliza la siguiente estructura:
 
 ```text
 app/modules/videos/
