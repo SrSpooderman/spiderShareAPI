@@ -11,11 +11,23 @@ from app.modules.auth.infrastructure.jwt_service import JwtService
 from app.modules.users.domain.ports import UserRepository
 from app.modules.users.domain.user import User, UserRole, has_role_at_least
 from app.modules.users.wiring import get_user_repository
-from app.shared.infrastructure.logging import set_user_id
+from app.shared.infrastructure.logging import (
+    set_auth_status,
+    set_user_id,
+    set_user_role,
+    set_username,
+)
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 optional_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
+
+
+def _set_authenticated_user_context(user: User) -> None:
+    set_auth_status("authenticated")
+    set_user_id(str(user.id))
+    set_username(user.username)
+    set_user_role(user.role.value)
 
 
 def get_jwt_service() -> JwtService:
@@ -56,14 +68,20 @@ def get_current_user(
         payload = jwt_service.decode_access_token(token)
         user_id = UUID(payload["sub"])
     except (JWTError, KeyError, ValueError):
+        set_auth_status("invalid_token")
         raise credentials_error
 
     user = user_repository.get_by_id(user_id)
 
-    if user is None or not user.is_active:
+    if user is None:
+        set_auth_status("unknown_user")
         raise credentials_error
 
-    set_user_id(str(user.id))
+    if not user.is_active:
+        set_auth_status("inactive_user")
+        raise credentials_error
+
+    _set_authenticated_user_context(user)
 
     return user
 
@@ -80,14 +98,20 @@ def get_optional_current_user(
         payload = jwt_service.decode_access_token(token)
         user_id = UUID(payload["sub"])
     except (JWTError, KeyError, ValueError):
+        set_auth_status("invalid_token")
         return None
 
     user = user_repository.get_by_id(user_id)
 
-    if user is None or not user.is_active:
+    if user is None:
+        set_auth_status("unknown_user")
         return None
 
-    set_user_id(str(user.id))
+    if not user.is_active:
+        set_auth_status("inactive_user")
+        return None
+
+    _set_authenticated_user_context(user)
 
     return user
 
