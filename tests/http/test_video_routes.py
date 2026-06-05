@@ -2,9 +2,9 @@ import pytest
 
 from app.modules.auth.wiring import get_current_user, get_optional_current_user
 from app.modules.videos.wiring import (
+    get_video_processing_scheduler,
     get_video_repository,
     get_video_storage,
-    get_video_transcoder,
 )
 from app.modules.videos.domain.video import VideoProcessingStatus
 from tests.factories import make_video_category, make_video_tag, make_video_variant
@@ -92,7 +92,7 @@ def test_upload_video_creates_video_and_stores_original(
     user = user_factory()
     app.dependency_overrides[get_video_repository] = lambda: video_repository
     app.dependency_overrides[get_video_storage] = lambda: video_storage
-    app.dependency_overrides[get_video_transcoder] = lambda: video_transcoder
+    app.dependency_overrides[get_video_processing_scheduler] = lambda: video_transcoder.transcode
     app.dependency_overrides[get_current_user] = lambda: user
 
     response = client.post(
@@ -110,15 +110,15 @@ def test_upload_video_creates_video_and_stores_original(
     assert body["title"] == "Boss clip"
     assert body["owner_id"] == str(user.id)
     assert body["original_filename"] == "clip.mp4"
-    assert body["processing_status"] == "ready"
-    assert body["width"] == 1920
-    assert body["height"] == 1080
-    assert body["duration_seconds"] == 12.5
-    assert body["thumbnail_path"].endswith("/thumbnail.jpg")
-    assert body["playback_url"] == f"/videos/{body['id']}/stream"
+    assert body["processing_status"] == "pending"
+    assert body["width"] is None
+    assert body["height"] is None
+    assert body["duration_seconds"] is None
+    assert body["thumbnail_path"] is None
+    assert body["playback_url"] is None
     assert body["download_url"] == f"/videos/{body['id']}/download"
-    assert body["thumbnail_url"] == f"/videos/{body['id']}/thumbnail"
-    assert [variant["codec"] for variant in body["variants"]] == ["av1", "h264"]
+    assert body["thumbnail_url"] is None
+    assert body["variants"] == []
     assert video_repository.created[0].id == video_storage.saved[0]["video_id"]
     assert video_storage.saved[0]["content"] == b"video-bytes"
     assert video_transcoder.transcoded == [video_repository.created[0].id]
@@ -136,7 +136,7 @@ def test_upload_video_allows_missing_description(
     user = user_factory()
     app.dependency_overrides[get_video_repository] = lambda: video_repository
     app.dependency_overrides[get_video_storage] = lambda: video_storage
-    app.dependency_overrides[get_video_transcoder] = lambda: video_transcoder
+    app.dependency_overrides[get_video_processing_scheduler] = lambda: video_transcoder.transcode
     app.dependency_overrides[get_current_user] = lambda: user
 
     response = client.post(

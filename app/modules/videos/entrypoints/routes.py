@@ -1,6 +1,18 @@
+from collections.abc import Callable
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import FileResponse
 
 from app.modules.auth.wiring import get_current_user, get_optional_current_user
@@ -19,7 +31,6 @@ from app.modules.videos.application.errors import (
 from app.modules.videos.application.favorite_video import FavoriteVideo
 from app.modules.videos.application.get_video import GetVideo
 from app.modules.videos.application.list_videos import ListVideos, ListVideosQuery
-from app.modules.videos.application.process_video import ProcessVideo
 from app.modules.videos.application.react_to_video import ReactToVideo
 from app.modules.videos.application.upload_video import UploadVideo, UploadVideoCommand
 from app.modules.videos.application.update_video import UpdateVideo, UpdateVideoCommand
@@ -38,10 +49,10 @@ from app.modules.videos.wiring import (
     get_favorite_video,
     get_get_video,
     get_list_videos,
-    get_process_video,
     get_react_to_video,
     get_upload_video,
     get_update_video,
+    get_video_processing_scheduler,
     get_video_repository,
     get_video_storage,
 )
@@ -156,6 +167,7 @@ def _get_accessible_video(video_id: UUID, current_user: User | None, get_video_u
 
 @router.post("/videos", response_model=VideoDetailResponse, status_code=status.HTTP_201_CREATED)
 async def upload_video(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     title: str = Form(..., min_length=1, max_length=255),
     description: str | None = Form(default=None, max_length=5000),
@@ -164,7 +176,9 @@ async def upload_video(
     tags: list[str] = Form(default=[]),
     current_user: User = Depends(get_current_user),
     upload_video_use_case: UploadVideo = Depends(get_upload_video),
-    process_video_use_case: ProcessVideo = Depends(get_process_video),
+    schedule_video_processing: Callable[[UUID], None] = Depends(
+        get_video_processing_scheduler,
+    ),
 ) -> VideoDetailResponse:
     original_filename = file.filename or "video"
 
@@ -183,9 +197,7 @@ async def upload_video(
                 tags=_normalize_tags(tags),
             )
         )
-        processed_video = process_video_use_case.execute(video.id)
-        if processed_video is not None:
-            video = processed_video
+        background_tasks.add_task(schedule_video_processing, video.id)
     except VideoUploadError as error:
         raise _map_video_upload_error(error)
     finally:

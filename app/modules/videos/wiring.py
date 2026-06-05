@@ -1,3 +1,6 @@
+from collections.abc import Callable
+from uuid import UUID
+
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
@@ -11,7 +14,7 @@ from app.modules.videos.application.upload_video import UploadVideo
 from app.modules.videos.application.update_video import UpdateVideo
 from app.modules.videos.domain.ports import VideoRepository, VideoStorage, VideoTranscoder
 from app.modules.videos.infrastructure.repository import SqlAlchemyVideoRepository
-from app.shared.infrastructure.db.session import get_db
+from app.shared.infrastructure.db.session import SessionLocal, get_db
 from app.shared.infrastructure.providers.storage.video_storage import LocalVideoStorage
 from app.shared.infrastructure.providers.storage.video_transcoder import FfmpegVideoTranscoder
 
@@ -58,6 +61,17 @@ def get_process_video(
     video_transcoder: VideoTranscoder = Depends(get_video_transcoder),
 ) -> ProcessVideo:
     return ProcessVideo(video_repository, video_transcoder)
+
+
+def process_video_in_new_session(video_id: UUID) -> None:
+    with SessionLocal() as db:
+        video_repository = SqlAlchemyVideoRepository(db)
+        video_transcoder = FfmpegVideoTranscoder()
+        ProcessVideo(video_repository, video_transcoder).execute(video_id)
+
+
+def get_video_processing_scheduler() -> Callable[[UUID], None]:
+    return process_video_in_new_session
 
 
 def get_delete_video(

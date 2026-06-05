@@ -55,6 +55,17 @@ def _clean_header_value(value: str | None, *, max_length: int = 200) -> str:
     return cleaned[:max_length] if cleaned else "-"
 
 
+def _restore_authenticated_user_context(request: Request) -> None:
+    user = getattr(request.state, "authenticated_user", None)
+    if user is None:
+        return
+
+    set_auth_status("authenticated")
+    set_user_id(str(user.id))
+    set_username(user.username)
+    set_user_role(user.role.value)
+
+
 def create_app() -> FastAPI:
     configure_logging()
     app = FastAPI(title="SpiderShare")
@@ -96,6 +107,7 @@ def create_app() -> FastAPI:
 
         duration_ms = (perf_counter() - started_at) * 1000
         response.headers["X-Request-ID"] = request_id
+        _restore_authenticated_user_context(request)
 
         log_method = logger.info
         if response.status_code >= 500:
