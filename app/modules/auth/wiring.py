@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
 
@@ -30,6 +30,10 @@ def _set_authenticated_user_context(user: User) -> None:
     set_user_role(user.role.value)
 
 
+def _remember_authenticated_user(request: Request, user: User) -> None:
+    request.state.authenticated_user = user
+
+
 def get_jwt_service() -> JwtService:
     return JwtService()
 
@@ -54,6 +58,7 @@ def get_login_user(
 
 
 def get_current_user(
+    request: Request,
     token: str = Depends(oauth2_scheme),
     jwt_service: JwtService = Depends(get_jwt_service),
     user_repository: UserRepository = Depends(get_user_repository),
@@ -82,11 +87,13 @@ def get_current_user(
         raise credentials_error
 
     _set_authenticated_user_context(user)
+    _remember_authenticated_user(request, user)
 
     return user
 
 
 def get_optional_current_user(
+    request: Request,
     token: str | None = Depends(optional_oauth2_scheme),
     jwt_service: JwtService = Depends(get_jwt_service),
     user_repository: UserRepository = Depends(get_user_repository),
@@ -112,6 +119,7 @@ def get_optional_current_user(
         return None
 
     _set_authenticated_user_context(user)
+    _remember_authenticated_user(request, user)
 
     return user
 
