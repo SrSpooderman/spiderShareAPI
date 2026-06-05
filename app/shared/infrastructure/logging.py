@@ -8,12 +8,22 @@ from config.settings import settings
 
 request_id_context: ContextVar[str] = ContextVar("request_id", default="-")
 user_id_context: ContextVar[str] = ContextVar("user_id", default="-")
+username_context: ContextVar[str] = ContextVar("username", default="-")
+user_role_context: ContextVar[str] = ContextVar("user_role", default="-")
+auth_status_context: ContextVar[str] = ContextVar("auth_status", default="anonymous")
+client_ip_context: ContextVar[str] = ContextVar("client_ip", default="-")
+user_agent_context: ContextVar[str] = ContextVar("user_agent", default="-")
 
 
 class RequestContextFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         record.request_id = request_id_context.get()
         record.user_id = user_id_context.get()
+        record.username = username_context.get()
+        record.user_role = user_role_context.get()
+        record.auth_status = auth_status_context.get()
+        record.client_ip = client_ip_context.get()
+        record.user_agent = user_agent_context.get()
         return True
 
 
@@ -33,7 +43,10 @@ def configure_logging() -> None:
                 "console": {
                     "format": (
                         "%(asctime)s %(levelname)s [%(name)s] "
-                        "request_id=%(request_id)s user_id=%(user_id)s %(message)s"
+                        "request_id=%(request_id)s client_ip=%(client_ip)s "
+                        "auth_status=%(auth_status)s user_id=%(user_id)s "
+                        "username=%(username)s user_role=%(user_role)s "
+                        'user_agent="%(user_agent)s" %(message)s'
                     ),
                     "datefmt": "%Y-%m-%d %H:%M:%S",
                 },
@@ -83,9 +96,49 @@ def set_user_id(user_id: str):
     return user_id_context.set(user_id)
 
 
+def set_username(username: str):
+    return username_context.set(username)
+
+
+def set_user_role(user_role: str):
+    return user_role_context.set(user_role)
+
+
+def set_auth_status(auth_status: str):
+    return auth_status_context.set(auth_status)
+
+
+def set_client_ip(client_ip: str):
+    return client_ip_context.set(client_ip)
+
+
+def set_user_agent(user_agent: str):
+    return user_agent_context.set(user_agent)
+
+
 def reset_request_id(token) -> None:
     request_id_context.reset(token)
 
 
 def reset_user_id(token) -> None:
     user_id_context.reset(token)
+
+
+def reset_username(token) -> None:
+    username_context.reset(token)
+
+
+def reset_user_role(token) -> None:
+    user_role_context.reset(token)
+
+
+def reset_auth_status(token) -> None:
+    auth_status_context.reset(token)
+
+
+def reset_client_ip(token) -> None:
+    client_ip_context.reset(token)
+
+
+def reset_user_agent(token) -> None:
+    user_agent_context.reset(token)
