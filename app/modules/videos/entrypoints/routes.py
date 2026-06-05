@@ -1,9 +1,9 @@
-from collections.abc import Callable
+#from collections.abc import Callable
 from uuid import UUID
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
+    #BackgroundTasks,
     Depends,
     File,
     Form,
@@ -52,7 +52,7 @@ from app.modules.videos.wiring import (
     get_react_to_video,
     get_upload_video,
     get_update_video,
-    get_video_processing_scheduler,
+    #get_video_processing_scheduler,
     get_video_repository,
     get_video_storage,
 )
@@ -167,7 +167,7 @@ def _get_accessible_video(video_id: UUID, current_user: User | None, get_video_u
 
 @router.post("/videos", response_model=VideoDetailResponse, status_code=status.HTTP_201_CREATED)
 async def upload_video(
-    background_tasks: BackgroundTasks,
+    #background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     title: str = Form(..., min_length=1, max_length=255),
     description: str | None = Form(default=None, max_length=5000),
@@ -176,9 +176,9 @@ async def upload_video(
     tags: list[str] = Form(default=[]),
     current_user: User = Depends(get_current_user),
     upload_video_use_case: UploadVideo = Depends(get_upload_video),
-    schedule_video_processing: Callable[[UUID], None] = Depends(
-        get_video_processing_scheduler,
-    ),
+    #schedule_video_processing: Callable[[UUID], None] = Depends(
+    #    get_video_processing_scheduler,
+    #),
 ) -> VideoDetailResponse:
     original_filename = file.filename or "video"
 
@@ -197,7 +197,7 @@ async def upload_video(
                 tags=_normalize_tags(tags),
             )
         )
-        background_tasks.add_task(schedule_video_processing, video.id)
+        #background_tasks.add_task(schedule_video_processing, video.id)
     except VideoUploadError as error:
         raise _map_video_upload_error(error)
     finally:
