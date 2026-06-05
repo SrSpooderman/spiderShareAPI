@@ -80,6 +80,46 @@ def test_login_returns_token_for_valid_credentials(app, client, user_factory) ->
 
 
 @pytest.mark.http
+def test_login_accepts_swagger_oauth2_password_form(app, client, user_factory) -> None:
+    user = user_factory(username="alice")
+    login_user = StubLoginUser(
+        result=LoginResult(
+            access_token="token-123",
+            token_type="bearer",
+            user=PublicUser(
+                id=user.id,
+                username=user.username,
+                display_name=user.display_name,
+                bio=user.bio,
+                ldap=user.ldap,
+                role=user.role,
+                is_active=user.is_active,
+                last_seen_version=user.last_seen_version,
+                last_login_at=user.last_login_at,
+                created_at=user.created_at,
+                updated_at=user.updated_at,
+            ),
+        )
+    )
+    app.dependency_overrides[get_login_user] = lambda: login_user
+
+    response = client.post(
+        "/auth/login",
+        data={
+            "username": "alice",
+            "password": "supersecret",
+            "client_id": "",
+            "client_secret": "",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["access_token"] == "token-123"
+    assert login_user.command.username == "alice"
+    assert login_user.command.password == "supersecret"
+
+
+@pytest.mark.http
 def test_login_returns_401_for_invalid_credentials(app, client) -> None:
     app.dependency_overrides[get_login_user] = lambda: StubLoginUser(
         error=InvalidCredentialsError()

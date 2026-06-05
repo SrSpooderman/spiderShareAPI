@@ -125,6 +125,31 @@ def test_upload_video_creates_video_and_stores_original(
 
 
 @pytest.mark.http
+def test_upload_video_allows_missing_description(
+    app,
+    client,
+    user_factory,
+    video_repository,
+    video_storage,
+    video_transcoder,
+) -> None:
+    user = user_factory()
+    app.dependency_overrides[get_video_repository] = lambda: video_repository
+    app.dependency_overrides[get_video_storage] = lambda: video_storage
+    app.dependency_overrides[get_video_transcoder] = lambda: video_transcoder
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    response = client.post(
+        "/videos",
+        data={"title": "Boss clip"},
+        files={"file": ("clip.mp4", b"video-bytes", "video/mp4")},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["description"] == ""
+
+
+@pytest.mark.http
 def test_get_video_detail_includes_permissions_favorite_and_reactions(
     app,
     client,
