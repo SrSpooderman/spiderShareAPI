@@ -17,8 +17,7 @@ services:
       mysql:
         condition: service_healthy
     networks:
-      - spidershare_network
-      - proxy_network
+      spidershare_network:
     command: >
       sh -c "alembic -c /app/alembic.ini upgrade head &&
       python -m app.bootstrap.seed_super_admin &&
@@ -44,7 +43,7 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
     networks:
-      - spidershare_network
+      spidershare_network:
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root_password}"]
       interval: 10s
@@ -57,7 +56,3 @@ volumes:
 networks:
   spidershare_network:
     driver: bridge
-
-  proxy_network:
-    external: true
-    name: ${PROXY_NETWORK_NAME}

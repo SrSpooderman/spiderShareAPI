@@ -1,0 +1,9 @@
+services:
+  api:
+    networks:
+      proxy_network:
+
+networks:
+  proxy_network:
+    external: true
+    name: ${PROXY_NETWORK_NAME}
