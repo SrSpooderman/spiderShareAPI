@@ -223,11 +223,44 @@ def test_video_download_stream_and_thumbnail_respect_visibility(
     assert response.content == b"stream-video"
     assert response.headers["content-type"].startswith("video/mp4")
 
+    response = client.get(f"/videos/{video.id}/stream?variant_type=original")
+
+    assert response.status_code == 200
+    assert response.content == b"original-video"
+    assert response.headers["content-type"].startswith("video/mp4")
+    assert response.headers["content-disposition"].startswith("inline;")
+
     response = client.get(f"/videos/{video.id}/thumbnail")
 
     assert response.status_code == 200
     assert response.content == b"thumbnail"
     assert response.headers["content-type"].startswith("image/jpeg")
+
+
+@pytest.mark.http
+def test_original_stream_works_for_pending_video(
+    app,
+    client,
+    tmp_path,
+    video_factory,
+    video_repository,
+    video_storage,
+) -> None:
+    video = video_repository.add(
+        video_factory(processing_status=VideoProcessingStatus.PENDING)
+    )
+    original_path = tmp_path / "original.webm"
+    original_path.write_bytes(b"original-video")
+    video_storage.original_paths[video.id] = original_path
+    app.dependency_overrides[get_video_repository] = lambda: video_repository
+    app.dependency_overrides[get_video_storage] = lambda: video_storage
+    app.dependency_overrides[get_optional_current_user] = lambda: None
+
+    response = client.get(f"/videos/{video.id}/stream?variant_type=original")
+
+    assert response.status_code == 200
+    assert response.content == b"original-video"
+    assert response.headers["content-type"].startswith("video/webm")
 
 
 @pytest.mark.http
