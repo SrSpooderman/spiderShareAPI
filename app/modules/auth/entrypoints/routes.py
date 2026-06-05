@@ -1,6 +1,7 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import ValidationError
 
 from app.modules.auth.application.login import (
     InactiveUserError,
@@ -30,6 +31,26 @@ from app.modules.users.domain.user import User, can_create_user_with_role
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
+
+
+async def _login_request_from_http_request(request: Request) -> LoginRequest:
+    content_type = request.headers.get("content-type", "").lower()
+
+    try:
+        if content_type.startswith(("application/x-www-form-urlencoded", "multipart/form-data")):
+            form = await request.form()
+            return LoginRequest(
+                username=str(form.get("username", "")),
+                password=str(form.get("password", "")),
+            )
+
+        return LoginRequest.model_validate(await request.json())
+    except ValidationError as error:
+        detail = [
+            {"loc": item["loc"], "msg": item["msg"], "type": item["type"]}
+            for item in error.errors()
+        ]
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail)
 
 
 @router.post(
@@ -66,15 +87,17 @@ def register(
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(
-    request: LoginRequest,
+async def login(
+    request: Request,
     login_user: LoginUser = Depends(get_login_user),
 ) -> LoginResponse:
+    login_request = await _login_request_from_http_request(request)
+
     try:
         result = login_user.execute(
             LoginUserCommand(
-                username=request.username,
-                password=request.password,
+                username=login_request.username,
+                password=login_request.password,
             )
         )
     except InvalidCredentialsError:

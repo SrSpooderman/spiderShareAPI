@@ -132,6 +132,13 @@ def _normalize_required_text(value: str, field_name: str) -> str:
     return text
 
 
+def _normalize_optional_text(value: str | None) -> str:
+    if value is None:
+        return ""
+
+    return value.strip()
+
+
 def _ensure_file_exists(path) -> None:
     if path is None or not path.exists() or not path.is_file():
         raise HTTPException(
@@ -151,7 +158,7 @@ def _get_accessible_video(video_id: UUID, current_user: User | None, get_video_u
 async def upload_video(
     file: UploadFile = File(...),
     title: str = Form(..., min_length=1, max_length=255),
-    description: str = Form(..., min_length=1, max_length=5000),
+    description: str | None = Form(default=None, max_length=5000),
     is_registered_only: bool = Form(default=False),
     category_ids: list[UUID] = Form(default=[]),
     tags: list[str] = Form(default=[]),
@@ -167,7 +174,7 @@ async def upload_video(
             UploadVideoCommand(
                 owner_id=current_user.id,
                 title=_normalize_required_text(title, "title"),
-                description=_normalize_required_text(description, "description"),
+                description=_normalize_optional_text(description),
                 original_filename=original_filename,
                 content_type=file.content_type,
                 file=file.file,
