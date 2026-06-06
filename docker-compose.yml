@@ -17,6 +17,7 @@ services:
         condition: service_healthy
     networks:
       spidershare_network:
+      proxy_network:
     command: >
       sh -c "alembic -c /app/alembic.ini upgrade head &&
       python -m app.bootstrap.seed_super_admin &&
@@ -56,3 +57,6 @@ volumes:
 networks:
   spidershare_network:
     driver: bridge
+  proxy_network:
+    external: true
+    name: ${PROXY_NETWORK_NAME}
