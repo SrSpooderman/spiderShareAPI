@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 from uuid import UUID
 
 from fastapi import (
@@ -68,6 +69,7 @@ from config.settings import settings
 
 
 router = APIRouter(tags=["videos"])
+logger = logging.getLogger(__name__)
 VIDEO_UPLOAD_IDEMPOTENCY_SCOPE = "videos.upload"
 
 
@@ -206,6 +208,7 @@ def _get_or_start_idempotency_record(
         return None
 
     normalized_key = idempotency_key.strip()
+    key_hash = hashlib.sha256(normalized_key.encode("utf-8")).hexdigest()[:12]
     if not normalized_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -225,19 +228,44 @@ def _get_or_start_idempotency_record(
             request_hash=request_hash,
         )
         if created:
+            logger.info(
+                "Idempotency record started scope=%s owner_id=%s key_hash=%s",
+                VIDEO_UPLOAD_IDEMPOTENCY_SCOPE,
+                current_user.id,
+                key_hash,
+            )
             return record
 
     if record.request_hash != request_hash:
+        logger.warning(
+            "Idempotency conflict scope=%s owner_id=%s key_hash=%s",
+            VIDEO_UPLOAD_IDEMPOTENCY_SCOPE,
+            current_user.id,
+            key_hash,
+        )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Idempotency-Key was already used with a different request",
         )
     if record.status == "completed" and record.response_body is not None:
+        logger.info(
+            "Idempotency replay scope=%s owner_id=%s key_hash=%s status_code=%s",
+            VIDEO_UPLOAD_IDEMPOTENCY_SCOPE,
+            current_user.id,
+            key_hash,
+            record.response_status_code or status.HTTP_201_CREATED,
+        )
         return JSONResponse(
             status_code=record.response_status_code or status.HTTP_201_CREATED,
             content=record.response_body,
         )
     if record.status == "processing":
+        logger.warning(
+            "Idempotency request still processing scope=%s owner_id=%s key_hash=%s",
+            VIDEO_UPLOAD_IDEMPOTENCY_SCOPE,
+            current_user.id,
+            key_hash,
+        )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Idempotent request is still processing",
@@ -270,6 +298,7 @@ async def upload_video(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> VideoDetailResponse | JSONResponse:
     original_filename = file.filename or "video"
+    upload_size = getattr(file, "size", None)
     normalized_title = _normalize_required_text(title, "title")
     normalized_description = _normalize_optional_text(description)
     normalized_tags = _normalize_tags(tags)
@@ -308,20 +337,74 @@ async def upload_video(
                 tags=normalized_tags,
             )
         )
+        logger.info(
+            "Video uploaded video_id=%s owner_id=%s filename=%s content_type=%s "
+            "size_bytes=%s idempotent=%s",
+            video.id,
+            current_user.id,
+            original_filename,
+            file.content_type or "-",
+            upload_size if upload_size is not None else "-",
+            idempotency_record is not None,
+        )
         try:
             video_processing_queue.enqueue(video.id)
-        except Exception:
-            video_repository.delete(video.id)
-            video_storage.delete_video_files(video.id)
+            logger.info(
+                "Video processing job enqueued video_id=%s owner_id=%s queue_backend=%s",
+                video.id,
+                current_user.id,
+                type(video_processing_queue).__name__,
+            )
+        except Exception as error:
+            logger.exception(
+                "Failed to enqueue video processing job video_id=%s owner_id=%s "
+                "queue_backend=%s error_type=%s",
+                video.id,
+                current_user.id,
+                type(video_processing_queue).__name__,
+                type(error).__name__,
+            )
+            try:
+                video_repository.delete(video.id)
+                video_storage.delete_video_files(video.id)
+            except Exception:
+                logger.exception(
+                    "Failed to roll back video after queue enqueue failure video_id=%s "
+                    "owner_id=%s",
+                    video.id,
+                    current_user.id,
+                )
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Video processing queue is unavailable",
             )
+    except HTTPException as error:
+        if idempotency_record is not None and error.status_code >= 500:
+            idempotency_repository.fail(idempotency_record, str(error.detail))
+        raise
     except VideoUploadError as error:
+        logger.warning(
+            "Video upload rejected owner_id=%s filename=%s content_type=%s "
+            "size_bytes=%s error_type=%s",
+            current_user.id,
+            original_filename,
+            file.content_type or "-",
+            upload_size if upload_size is not None else "-",
+            type(error).__name__,
+        )
         if idempotency_record is not None:
             idempotency_repository.delete(idempotency_record)
         raise _map_video_upload_error(error)
     except Exception as error:
+        logger.exception(
+            "Video upload failed owner_id=%s filename=%s content_type=%s "
+            "size_bytes=%s error_type=%s",
+            current_user.id,
+            original_filename,
+            file.content_type or "-",
+            upload_size if upload_size is not None else "-",
+            type(error).__name__,
+        )
         if idempotency_record is not None:
             idempotency_repository.fail(idempotency_record, str(error))
         raise
@@ -339,6 +422,12 @@ async def upload_video(
             idempotency_record,
             response_status_code=status.HTTP_201_CREATED,
             response_body=jsonable_encoder(response),
+        )
+        logger.info(
+            "Idempotency record completed scope=%s owner_id=%s video_id=%s",
+            VIDEO_UPLOAD_IDEMPOTENCY_SCOPE,
+            current_user.id,
+            video.id,
         )
     return response
 
