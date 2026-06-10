@@ -4,6 +4,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.shared.infrastructure.db.base import Base
+from app.shared.infrastructure.idempotency import IdempotencyRecordModel
 from config.settings import settings
 
 # Models

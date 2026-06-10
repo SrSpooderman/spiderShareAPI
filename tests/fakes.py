@@ -1,4 +1,4 @@
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from uuid import UUID
@@ -526,6 +526,84 @@ class FakeVideoTranscoder:
                 ),
             ],
         )
+
+
+class FakeVideoProcessingQueue:
+    def __init__(self, error: Exception | None = None) -> None:
+        self.error = error
+        self.enqueued: list[UUID] = []
+
+    def enqueue(self, video_id: UUID) -> None:
+        if self.error is not None:
+            raise self.error
+        self.enqueued.append(video_id)
+
+
+@dataclass
+class FakeIdempotencyRecord:
+    scope: str
+    user_id: str
+    key: str
+    request_hash: str
+    status: str
+    response_status_code: int | None = None
+    response_body: dict | None = None
+    error_message: str | None = None
+
+
+class FakeIdempotencyRepository:
+    def __init__(self) -> None:
+        self.records: dict[tuple[str, str, str], FakeIdempotencyRecord] = {}
+
+    def get(
+        self,
+        *,
+        scope: str,
+        user_id: str,
+        key: str,
+    ) -> FakeIdempotencyRecord | None:
+        return self.records.get((scope, user_id, key))
+
+    def start(
+        self,
+        *,
+        scope: str,
+        user_id: str,
+        key: str,
+        request_hash: str,
+    ) -> tuple[FakeIdempotencyRecord, bool]:
+        existing_record = self.get(scope=scope, user_id=user_id, key=key)
+        if existing_record is not None:
+            return existing_record, False
+
+        record = FakeIdempotencyRecord(
+            scope=scope,
+            user_id=user_id,
+            key=key,
+            request_hash=request_hash,
+            status="processing",
+        )
+        self.records[(scope, user_id, key)] = record
+        return record, True
+
+    def complete(
+        self,
+        record: FakeIdempotencyRecord,
+        *,
+        response_status_code: int,
+        response_body: dict,
+    ) -> None:
+        record.status = "completed"
+        record.response_status_code = response_status_code
+        record.response_body = response_body
+        record.error_message = None
+
+    def fail(self, record: FakeIdempotencyRecord, error_message: str) -> None:
+        record.status = "failed"
+        record.error_message = error_message
+
+    def delete(self, record: FakeIdempotencyRecord) -> None:
+        self.records.pop((record.scope, record.user_id, record.key), None)
 
 
 class FakePasswordHasher:

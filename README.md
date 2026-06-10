@@ -24,6 +24,7 @@ Ahora mismo incluye:
 - SQLAlchemy.
 - Alembic.
 - MySQL 8.4.
+- Redis + RQ para la cola de procesado de videos.
 - python-jose para JWT.
 - bcrypt para passwords.
 - Pytest + HTTPX para tests.
@@ -76,7 +77,7 @@ El proyecto usa variables de entorno desde `.env` en local y `stack.env` cuando 
 
 ### Desarrollo
 
-En desarrollo se usa `docker-compose.dev.yml`, que monta el codigo local dentro del contenedor y arranca Uvicorn con `--reload`.
+En desarrollo se usa `docker-compose.dev.yml`, que monta el codigo local dentro del contenedor y arranca Uvicorn con `--reload`. El compose levanta `api`, `worker`, `redis` y `mysql`.
 
 ```bash
 cp .env.example .env
@@ -141,6 +142,8 @@ STEAM_WEB_API_KEY=
 STEAM_WEB_API_BASE_URL=https://api.steampowered.com
 
 VIDEO_STORAGE_PATH=/app/storage/videos
+REDIS_URL=redis://redis:6379/0
+VIDEO_PROCESSING_QUEUE_NAME=video-processing
 ```
 
 Importante: cambia `SECRET_KEY`, passwords de MySQL y credenciales del super admin antes de desplegar.
@@ -155,7 +158,11 @@ Importante: cambia `SECRET_KEY`, passwords de MySQL y credenciales del super adm
 | `APP_DEBUG` | Flag de debug. |
 | `APP_PORT` | Puerto expuesto por Docker. |
 | `DATABASE_URL` | URL SQLAlchemy usada por app y Alembic. |
-| `VIDEO_STORAGE_PATH` | Ruta donde se guardaran videos cuando el modulo exista. |
+| `VIDEO_STORAGE_PATH` | Ruta donde se guardan los videos originales, variantes y miniaturas. |
+| `REDIS_URL` | URL de Redis usada por API y worker para la cola de videos. |
+| `VIDEO_PROCESSING_QUEUE_NAME` | Nombre de la cola RQ de procesado. |
+| `VIDEO_PROCESSING_MAX_ATTEMPTS` | Reintentos maximos del job de procesado. |
+| `VIDEO_PROCESSING_JOB_TIMEOUT_SECONDS` | Timeout maximo de procesado por video. |
 | `SECRET_KEY` | Clave para firmar JWT. Obligatoria. |
 | `JWT_ALGORITHM` | Algoritmo JWT. Por defecto `HS256`. |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Duracion del token de acceso. |
@@ -414,6 +421,18 @@ El proyecto ya incluye un modulo de videos con soporte para:
 
 El almacenamiento de videos usa `VIDEO_STORAGE_PATH` y la carpeta `storage/videos`.
 
+La subida responde rapido con el video en estado `pending`, encola `process_video(video_id)` en Redis/RQ y el worker independiente lo mueve por `processing`, `ready` o `failed`. El frontend puede consultar `GET /videos/{id}` para refrescar `processing_status`.
+
+Para evitar duplicados por reintentos de red, `POST /videos` acepta la cabecera `Idempotency-Key`. Si se repite la misma key con el mismo payload, la API devuelve la misma respuesta; si se reutiliza con otro payload, responde `409`.
+
+Comandos utiles:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f worker
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec worker python -m app.workers.video_processing
+```
+
 Una implementacion limpia utiliza la siguiente estructura:
 
 ```text
@@ -483,6 +502,7 @@ Ver logs:
 
 ```bash
 docker compose logs -f api
+docker compose logs -f worker
 ```
 
 Entrar al contenedor API:

@@ -13,11 +13,14 @@ class ProcessVideo:
         self.video_repository = video_repository
         self.video_transcoder = video_transcoder
 
-    def execute(self, video_id: UUID) -> Video | None:
+    def execute(self, video_id: UUID, *, raise_on_error: bool = False) -> Video | None:
         self.video_repository.mark_processing(video_id)
         try:
             result = self.video_transcoder.transcode(video_id)
         except Exception:
-            return self.video_repository.mark_failed(video_id)
+            failed_video = self.video_repository.mark_failed(video_id)
+            if raise_on_error:
+                raise
+            return failed_video
 
         return self.video_repository.mark_processed(video_id, result)

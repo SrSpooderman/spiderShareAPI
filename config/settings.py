@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     max_video_tags: int = 6
     max_video_reactions_per_user: int = 2
     video_allowed_mime_types: list[str] = ["video/mp4", "video/webm"]
+    redis_url: str = "redis://redis:6379/0"
+    video_processing_queue_name: str = "video-processing"
+    video_processing_max_attempts: int = 3
+    video_processing_job_timeout_seconds: int = 900
 
     model_config = SettingsConfigDict(
         env_file=".env",
