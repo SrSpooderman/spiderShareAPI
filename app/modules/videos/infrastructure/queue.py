@@ -7,6 +7,10 @@ from app.modules.videos.domain.ports import VideoProcessingQueue
 from config.settings import settings
 
 
+def video_processing_job_id(video_id: UUID) -> str:
+    return f"video-processing-{video_id}"
+
+
 class RqVideoProcessingQueue(VideoProcessingQueue):
     def __init__(self, redis_url: str | None = None, queue_name: str | None = None) -> None:
         self.connection = Redis.from_url(redis_url or settings.redis_url)
@@ -16,7 +20,7 @@ class RqVideoProcessingQueue(VideoProcessingQueue):
         )
 
     def enqueue(self, video_id: UUID) -> None:
-        job_id = f"video-processing:{video_id}"
+        job_id = video_processing_job_id(video_id)
         existing_job = self.queue.fetch_job(job_id)
         if existing_job is not None and existing_job.get_status() in {
             "queued",
