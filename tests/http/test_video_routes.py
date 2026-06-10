@@ -2,6 +2,7 @@ import pytest
 
 from app.modules.auth.wiring import get_current_user, get_optional_current_user
 from app.modules.videos.wiring import (
+    get_video_processing_queue,
     get_video_repository,
     get_video_storage,
 )
@@ -87,6 +88,7 @@ def test_upload_video_creates_video_and_stores_original(
     video_repository,
     video_storage,
     video_transcoder,
+    video_processing_queue,
 ) -> None:
     user = user_factory()
     app.dependency_overrides[get_video_repository] = lambda: video_repository
@@ -119,6 +121,7 @@ def test_upload_video_creates_video_and_stores_original(
     assert body["variants"] == []
     assert video_repository.created[0].id == video_storage.saved[0]["video_id"]
     assert video_storage.saved[0]["content"] == b"video-bytes"
+    assert video_processing_queue.enqueued == [video_repository.created[0].id]
     assert video_transcoder.transcoded == []
 
 
@@ -130,6 +133,7 @@ def test_upload_video_allows_missing_description(
     video_repository,
     video_storage,
     video_transcoder,
+    video_processing_queue,
 ) -> None:
     user = user_factory()
     app.dependency_overrides[get_video_repository] = lambda: video_repository
@@ -144,6 +148,107 @@ def test_upload_video_allows_missing_description(
 
     assert response.status_code == 201
     assert response.json()["description"] == ""
+    assert video_processing_queue.enqueued == [video_repository.created[0].id]
+
+
+@pytest.mark.http
+def test_upload_video_replays_response_for_same_idempotency_key(
+    app,
+    client,
+    user_factory,
+    video_repository,
+    video_storage,
+    video_processing_queue,
+) -> None:
+    user = user_factory()
+    app.dependency_overrides[get_video_repository] = lambda: video_repository
+    app.dependency_overrides[get_video_storage] = lambda: video_storage
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    first_response = client.post(
+        "/videos",
+        headers={"Idempotency-Key": "upload-1"},
+        data={"title": "Boss clip", "description": "Context"},
+        files={"file": ("clip.mp4", b"video-bytes", "video/mp4")},
+    )
+    second_response = client.post(
+        "/videos",
+        headers={"Idempotency-Key": "upload-1"},
+        data={"title": "Boss clip", "description": "Context"},
+        files={"file": ("clip.mp4", b"video-bytes", "video/mp4")},
+    )
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 201
+    assert second_response.json() == first_response.json()
+    assert len(video_repository.created) == 1
+    assert len(video_storage.saved) == 1
+    assert video_processing_queue.enqueued == [video_repository.created[0].id]
+
+
+@pytest.mark.http
+def test_upload_video_rejects_reused_idempotency_key_with_different_request(
+    app,
+    client,
+    user_factory,
+    video_repository,
+    video_storage,
+) -> None:
+    user = user_factory()
+    app.dependency_overrides[get_video_repository] = lambda: video_repository
+    app.dependency_overrides[get_video_storage] = lambda: video_storage
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    first_response = client.post(
+        "/videos",
+        headers={"Idempotency-Key": "upload-1"},
+        data={"title": "Boss clip"},
+        files={"file": ("clip.mp4", b"video-bytes", "video/mp4")},
+    )
+    second_response = client.post(
+        "/videos",
+        headers={"Idempotency-Key": "upload-1"},
+        data={"title": "Different title"},
+        files={"file": ("clip.mp4", b"video-bytes", "video/mp4")},
+    )
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 409
+    assert second_response.json()["detail"] == (
+        "Idempotency-Key was already used with a different request"
+    )
+    assert len(video_repository.created) == 1
+    assert len(video_storage.saved) == 1
+
+
+@pytest.mark.http
+def test_upload_video_rolls_back_when_processing_queue_is_unavailable(
+    app,
+    client,
+    user_factory,
+    video_repository,
+    video_storage,
+) -> None:
+    from tests.fakes import FakeVideoProcessingQueue
+
+    user = user_factory()
+    app.dependency_overrides[get_video_repository] = lambda: video_repository
+    app.dependency_overrides[get_video_storage] = lambda: video_storage
+    app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_video_processing_queue] = lambda: FakeVideoProcessingQueue(
+        RuntimeError("redis unavailable")
+    )
+
+    response = client.post(
+        "/videos",
+        data={"title": "Boss clip"},
+        files={"file": ("clip.mp4", b"video-bytes", "video/mp4")},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Video processing queue is unavailable"
+    assert video_repository.created[0].id in video_repository.deleted
+    assert video_storage.deleted_all == [video_repository.created[0].id]
 
 
 @pytest.mark.http

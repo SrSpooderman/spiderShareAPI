@@ -2,12 +2,16 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.bootstrap.app_factory import create_app
+from app.modules.videos.wiring import get_video_processing_queue
+from app.shared.wiring import get_idempotency_repository
 from tests.factories import make_steam_game, make_user, make_video
 from tests.fakes import (
     FakeAccessTokenService,
+    FakeIdempotencyRepository,
     FakePasswordHasher,
     FakeSteamClient,
     FakeSteamGameRepository,
+    FakeVideoProcessingQueue,
     FakeUserRepository,
     FakeVideoRepository,
     FakeVideoStorage,
@@ -56,6 +60,16 @@ def video_transcoder():
 
 
 @pytest.fixture
+def video_processing_queue():
+    return FakeVideoProcessingQueue()
+
+
+@pytest.fixture
+def idempotency_repository():
+    return FakeIdempotencyRepository()
+
+
+@pytest.fixture
 def password_hasher():
     return FakePasswordHasher()
 
@@ -71,8 +85,10 @@ def steam_client():
 
 
 @pytest.fixture
-def app():
+def app(video_processing_queue, idempotency_repository):
     app = create_app()
+    app.dependency_overrides[get_video_processing_queue] = lambda: video_processing_queue
+    app.dependency_overrides[get_idempotency_repository] = lambda: idempotency_repository
     try:
         yield app
     finally:

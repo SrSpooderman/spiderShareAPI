@@ -15,6 +15,8 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       spidershare_network:
       proxy_network:
@@ -22,6 +24,39 @@ services:
       sh -c "alembic -c /app/alembic.ini upgrade head &&
       python -m app.bootstrap.seed_super_admin &&
       uvicorn run:app --host 0.0.0.0 --port 8000 --no-access-log"
+
+  worker:
+    build:
+      context: .
+    container_name: jaimito_worker
+    restart: unless-stopped
+    env_file:
+      - path: stack.env
+        required: false
+      - path: .env
+        required: false
+    volumes:
+      - video_storage:${VIDEO_STORAGE_PATH:-/app/storage/videos}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      spidershare_network:
+    command: python -m app.workers.video_processing
+
+  redis:
+    image: redis:7-alpine
+    container_name: spidershare_redis
+    restart: unless-stopped
+    networks:
+      spidershare_network:
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 
   mysql:

@@ -170,3 +170,9 @@ class VideoTranscoder(ABC):
     @abstractmethod
     def transcode(self, video_id: UUID) -> VideoProcessingResult:
         pass
+
+
+class VideoProcessingQueue(ABC):
+    @abstractmethod
+    def enqueue(self, video_id: UUID) -> None:
+        pass

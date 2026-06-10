@@ -300,7 +300,19 @@ class SqlAlchemyVideoRepository(VideoRepository):
             )
             self.session.add(model)
 
-        self.session.commit()
+        try:
+            self.session.commit()
+        except IntegrityError:
+            self.session.rollback()
+            model = self.session.scalar(
+                select(VideoReactionModel).where(
+                    VideoReactionModel.video_id == str(video_id),
+                    VideoReactionModel.user_id == str(user_id),
+                    VideoReactionModel.reaction_type == reaction_type,
+                )
+            )
+            if model is None:
+                raise
         self.session.refresh(model)
 
         return video_reaction_model_to_domain(model)

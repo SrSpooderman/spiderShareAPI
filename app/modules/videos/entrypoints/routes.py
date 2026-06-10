@@ -1,3 +1,5 @@
+import hashlib
+import json
 from uuid import UUID
 
 from fastapi import (
@@ -5,13 +7,15 @@ from fastapi import (
     Depends,
     File,
     Form,
+    Header,
     HTTPException,
     Query,
     Response,
     UploadFile,
     status,
 )
-from fastapi.responses import FileResponse
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import FileResponse, JSONResponse
 
 from app.modules.auth.wiring import get_current_user, get_optional_current_user
 from app.modules.users.domain.user import User
@@ -32,7 +36,11 @@ from app.modules.videos.application.list_videos import ListVideos, ListVideosQue
 from app.modules.videos.application.react_to_video import ReactToVideo
 from app.modules.videos.application.upload_video import UploadVideo, UploadVideoCommand
 from app.modules.videos.application.update_video import UpdateVideo, UpdateVideoCommand
-from app.modules.videos.domain.ports import VideoRepository, VideoStorage
+from app.modules.videos.domain.ports import (
+    VideoProcessingQueue,
+    VideoRepository,
+    VideoStorage,
+)
 from app.modules.videos.domain.video import VideoProcessingStatus, VideoVariantType
 from app.modules.videos.entrypoints.schemas import (
     VideoDetailResponse,
@@ -50,13 +58,17 @@ from app.modules.videos.wiring import (
     get_react_to_video,
     get_upload_video,
     get_update_video,
+    get_video_processing_queue,
     get_video_repository,
     get_video_storage,
 )
+from app.shared.infrastructure.idempotency import IdempotencyRepository
+from app.shared.wiring import get_idempotency_repository
 from config.settings import settings
 
 
 router = APIRouter(tags=["videos"])
+VIDEO_UPLOAD_IDEMPOTENCY_SCOPE = "videos.upload"
 
 
 def _fields_set(request: VideoUpdateRequest) -> set[str]:
@@ -155,6 +167,85 @@ def _ensure_file_exists(path) -> None:
         )
 
 
+async def _video_upload_request_hash(
+    *,
+    file: UploadFile,
+    title: str,
+    description: str,
+    is_registered_only: bool,
+    category_ids: list[UUID],
+    tags: list[str],
+) -> str:
+    digest = hashlib.sha256()
+    metadata = {
+        "title": title,
+        "description": description,
+        "is_registered_only": is_registered_only,
+        "category_ids": sorted(str(category_id) for category_id in category_ids),
+        "tags": sorted(tags),
+        "filename": file.filename or "video",
+        "content_type": file.content_type,
+    }
+    digest.update(json.dumps(metadata, sort_keys=True).encode("utf-8"))
+
+    await file.seek(0)
+    while chunk := await file.read(1024 * 1024):
+        digest.update(chunk)
+    await file.seek(0)
+    return digest.hexdigest()
+
+
+def _get_or_start_idempotency_record(
+    *,
+    idempotency_key: str | None,
+    request_hash: str,
+    current_user: User,
+    idempotency_repository: IdempotencyRepository,
+):
+    if idempotency_key is None:
+        return None
+
+    normalized_key = idempotency_key.strip()
+    if not normalized_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Idempotency-Key cannot be blank",
+        )
+
+    record = idempotency_repository.get(
+        scope=VIDEO_UPLOAD_IDEMPOTENCY_SCOPE,
+        user_id=str(current_user.id),
+        key=normalized_key,
+    )
+    if record is None:
+        record, created = idempotency_repository.start(
+            scope=VIDEO_UPLOAD_IDEMPOTENCY_SCOPE,
+            user_id=str(current_user.id),
+            key=normalized_key,
+            request_hash=request_hash,
+        )
+        if created:
+            return record
+
+    if record.request_hash != request_hash:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Idempotency-Key was already used with a different request",
+        )
+    if record.status == "completed" and record.response_body is not None:
+        return JSONResponse(
+            status_code=record.response_status_code or status.HTTP_201_CREATED,
+            content=record.response_body,
+        )
+    if record.status == "processing":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Idempotent request is still processing",
+        )
+
+    return record
+
+
 def _get_accessible_video(video_id: UUID, current_user: User | None, get_video_use_case: GetVideo):
     try:
         return get_video_use_case.execute(video_id, current_user)
@@ -172,35 +263,84 @@ async def upload_video(
     tags: list[str] = Form(default=[]),
     current_user: User = Depends(get_current_user),
     upload_video_use_case: UploadVideo = Depends(get_upload_video),
-) -> VideoDetailResponse:
+    video_processing_queue: VideoProcessingQueue = Depends(get_video_processing_queue),
+    video_repository: VideoRepository = Depends(get_video_repository),
+    video_storage: VideoStorage = Depends(get_video_storage),
+    idempotency_repository: IdempotencyRepository = Depends(get_idempotency_repository),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> VideoDetailResponse | JSONResponse:
     original_filename = file.filename or "video"
+    normalized_title = _normalize_required_text(title, "title")
+    normalized_description = _normalize_optional_text(description)
+    normalized_tags = _normalize_tags(tags)
+
+    request_hash = await _video_upload_request_hash(
+        file=file,
+        title=normalized_title,
+        description=normalized_description,
+        is_registered_only=is_registered_only,
+        category_ids=category_ids,
+        tags=normalized_tags,
+    )
+    idempotency_record_or_response = _get_or_start_idempotency_record(
+        idempotency_key=idempotency_key,
+        request_hash=request_hash,
+        current_user=current_user,
+        idempotency_repository=idempotency_repository,
+    )
+    if isinstance(idempotency_record_or_response, JSONResponse):
+        await file.close()
+        return idempotency_record_or_response
+    idempotency_record = idempotency_record_or_response
 
     try:
         await file.seek(0)
         video = upload_video_use_case.execute(
             UploadVideoCommand(
                 owner_id=current_user.id,
-                title=_normalize_required_text(title, "title"),
-                description=_normalize_optional_text(description),
+                title=normalized_title,
+                description=normalized_description,
                 original_filename=original_filename,
                 content_type=file.content_type,
                 file=file.file,
                 is_registered_only=is_registered_only,
                 category_ids=category_ids,
-                tags=_normalize_tags(tags),
+                tags=normalized_tags,
             )
         )
+        try:
+            video_processing_queue.enqueue(video.id)
+        except Exception:
+            video_repository.delete(video.id)
+            video_storage.delete_video_files(video.id)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Video processing queue is unavailable",
+            )
     except VideoUploadError as error:
+        if idempotency_record is not None:
+            idempotency_repository.delete(idempotency_record)
         raise _map_video_upload_error(error)
+    except Exception as error:
+        if idempotency_record is not None:
+            idempotency_repository.fail(idempotency_record, str(error))
+        raise
     finally:
         await file.close()
 
-    return VideoDetailResponse.from_domain(
+    response = VideoDetailResponse.from_domain(
         video,
         current_user=current_user,
         is_favorite=False,
         reaction_counts={},
     )
+    if idempotency_record is not None:
+        idempotency_repository.complete(
+            idempotency_record,
+            response_status_code=status.HTTP_201_CREATED,
+            response_body=jsonable_encoder(response),
+        )
+    return response
 
 
 @router.get("/videos", response_model=VideoListResponse)
