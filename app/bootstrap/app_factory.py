@@ -35,11 +35,14 @@ logger = logging.getLogger(__name__)
 def _client_ip(request: Request) -> str:
     forwarded_for = request.headers.get("X-Forwarded-For")
     if forwarded_for:
-        return forwarded_for.split(",", maxsplit=1)[0].strip() or "-"
+        return _clean_header_value(
+            forwarded_for.split(",", maxsplit=1)[0],
+            max_length=80,
+        )
 
     real_ip = request.headers.get("X-Real-IP")
     if real_ip:
-        return real_ip.strip() or "-"
+        return _clean_header_value(real_ip, max_length=80)
 
     if request.client is None:
         return "-"
@@ -72,7 +75,12 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def request_logging_middleware(request: Request, call_next):
-        request_id = request.headers.get("X-Request-ID") or new_request_id()
+        request_id = _clean_header_value(
+            request.headers.get("X-Request-ID"),
+            max_length=80,
+        )
+        if request_id == "-":
+            request_id = new_request_id()
         authorization = request.headers.get("Authorization", "")
         initial_auth_status = (
             "token_present" if authorization.lower().startswith("bearer ") else "anonymous"

@@ -78,11 +78,23 @@ def register(
             )
         )
     except UsernameAlreadyExistsError:
+        logger.warning(
+            "Register failed reason=username_exists requested_username=%s created_by=%s",
+            request.username,
+            current_user.id,
+        )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Username already exists",
         )
 
+    logger.info(
+        "User registered user_id=%s username=%s role=%s created_by=%s",
+        user.id,
+        user.username,
+        user.role.value,
+        current_user.id,
+    )
     return UserResponse.from_public_user(user)
 
 
@@ -101,19 +113,31 @@ async def login(
             )
         )
     except InvalidCredentialsError:
-        logger.warning("Login failed reason=invalid_credentials")
+        logger.warning(
+            "Login failed reason=invalid_credentials username=%s",
+            login_request.username,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
     except InactiveUserError:
-        logger.warning("Login failed reason=inactive_user")
+        logger.warning(
+            "Login failed reason=inactive_user username=%s",
+            login_request.username,
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Inactive user",
         )
 
+    logger.info(
+        "Login succeeded user_id=%s username=%s role=%s",
+        result.user.id,
+        result.user.username,
+        result.user.role.value,
+    )
     return LoginResponse.from_result(result)
 
 

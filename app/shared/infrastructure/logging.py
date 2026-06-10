@@ -13,6 +13,9 @@ user_role_context: ContextVar[str] = ContextVar("user_role", default="-")
 auth_status_context: ContextVar[str] = ContextVar("auth_status", default="anonymous")
 client_ip_context: ContextVar[str] = ContextVar("client_ip", default="-")
 user_agent_context: ContextVar[str] = ContextVar("user_agent", default="-")
+worker_name_context: ContextVar[str] = ContextVar("worker_name", default="-")
+job_id_context: ContextVar[str] = ContextVar("job_id", default="-")
+video_id_context: ContextVar[str] = ContextVar("video_id", default="-")
 
 
 class RequestContextFilter(logging.Filter):
@@ -24,6 +27,9 @@ class RequestContextFilter(logging.Filter):
         record.auth_status = auth_status_context.get()
         record.client_ip = client_ip_context.get()
         record.user_agent = user_agent_context.get()
+        record.worker_name = worker_name_context.get()
+        record.job_id = job_id_context.get()
+        record.video_id = video_id_context.get()
         return True
 
 
@@ -46,6 +52,7 @@ def configure_logging() -> None:
                         "request_id=%(request_id)s client_ip=%(client_ip)s "
                         "auth_status=%(auth_status)s user_id=%(user_id)s "
                         "username=%(username)s user_role=%(user_role)s "
+                        "worker=%(worker_name)s job_id=%(job_id)s video_id=%(video_id)s "
                         'user_agent="%(user_agent)s" %(message)s'
                     ),
                     "datefmt": "%Y-%m-%d %H:%M:%S",
@@ -116,6 +123,18 @@ def set_user_agent(user_agent: str):
     return user_agent_context.set(user_agent)
 
 
+def set_worker_name(worker_name: str):
+    return worker_name_context.set(worker_name)
+
+
+def set_job_id(job_id: str):
+    return job_id_context.set(job_id)
+
+
+def set_video_id(video_id: str):
+    return video_id_context.set(video_id)
+
+
 def reset_request_id(token) -> None:
     request_id_context.reset(token)
 
@@ -142,3 +161,15 @@ def reset_client_ip(token) -> None:
 
 def reset_user_agent(token) -> None:
     user_agent_context.reset(token)
+
+
+def reset_worker_name(token) -> None:
+    worker_name_context.reset(token)
+
+
+def reset_job_id(token) -> None:
+    job_id_context.reset(token)
+
+
+def reset_video_id(token) -> None:
+    video_id_context.reset(token)
