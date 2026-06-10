@@ -215,6 +215,7 @@ class FakeVideoRepository:
             make_video(
                 id=video.id,
                 owner_id=video.owner_id,
+                owner_username="test-user",
                 title=video.title,
                 description=video.description,
                 original_filename=video.original_filename,

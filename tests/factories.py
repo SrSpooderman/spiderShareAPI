@@ -6,6 +6,7 @@ from app.modules.users.domain.user import User, UserRole
 from app.modules.videos.domain.video import (
     Video,
     VideoCategory,
+    VideoOwner,
     VideoProcessingStatus,
     VideoVariant,
     VideoVariantType,
@@ -105,6 +106,8 @@ def make_video(
     *,
     id: UUID | None = None,
     owner_id: UUID | None = None,
+    owner_username: str = "test-user",
+    owner_display_name: str | None = None,
     title: str = "Clip",
     description: str = "Context",
     original_filename: str = "clip.mp4",
@@ -124,9 +127,15 @@ def make_video(
     updated_at: datetime | None = None,
 ) -> Video:
     now = utc_now()
+    resolved_owner_id = owner_id or uuid4()
     return Video(
         id=id or uuid4(),
-        owner_id=owner_id or uuid4(),
+        owner_id=resolved_owner_id,
+        owner=VideoOwner(
+            id=resolved_owner_id,
+            username=owner_username,
+            display_name=owner_display_name,
+        ),
         title=title,
         description=description,
         original_filename=original_filename,

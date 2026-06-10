@@ -15,6 +15,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.shared.infrastructure.db.base import Base
+from app.modules.users.infrastructure.models import UserModel
 
 
 class VideoModel(Base):
@@ -81,6 +82,7 @@ class VideoModel(Base):
         back_populates="video",
         cascade="all, delete-orphan",
     )
+    owner: Mapped[UserModel] = relationship()
 
 
 class VideoVariantModel(Base):

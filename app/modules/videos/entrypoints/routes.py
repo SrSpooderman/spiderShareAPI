@@ -42,7 +42,7 @@ from app.modules.videos.domain.ports import (
     VideoRepository,
     VideoStorage,
 )
-from app.modules.videos.domain.video import VideoProcessingStatus, VideoVariantType
+from app.modules.videos.domain.video import VideoOwner, VideoProcessingStatus, VideoVariantType
 from app.modules.videos.entrypoints.schemas import (
     VideoDetailResponse,
     VideoListResponse,
@@ -336,6 +336,11 @@ async def upload_video(
                 category_ids=category_ids,
                 tags=normalized_tags,
             )
+        )
+        video.owner = VideoOwner(
+            id=current_user.id,
+            username=current_user.username,
+            display_name=current_user.display_name,
         )
         logger.info(
             "Video uploaded video_id=%s owner_id=%s filename=%s content_type=%s "

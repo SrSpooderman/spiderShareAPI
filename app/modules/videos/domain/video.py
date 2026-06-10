@@ -26,6 +26,13 @@ class VideoVariantType(str, Enum):
 
 
 @dataclass
+class VideoOwner:
+    id: UUID
+    username: str
+    display_name: str | None
+
+
+@dataclass
 class VideoCategory:
     id: UUID
     name: str
@@ -112,6 +119,7 @@ class VideoCreate:
 class Video:
     id: UUID
     owner_id: UUID
+    owner: VideoOwner | None
     title: str
     description: str
     original_filename: str

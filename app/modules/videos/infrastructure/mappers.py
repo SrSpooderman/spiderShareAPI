@@ -6,6 +6,7 @@ from app.modules.videos.domain.video import (
     VideoCategory,
     VideoCreate,
     VideoFavorite,
+    VideoOwner,
     VideoProcessingStatus,
     VideoReaction,
     VideoTag,
@@ -33,6 +34,15 @@ def video_model_to_domain(model: VideoModel) -> Video:
     return Video(
         id=UUID(model.id),
         owner_id=UUID(model.owner_id),
+        owner=(
+            VideoOwner(
+                id=UUID(model.owner.id),
+                username=model.owner.username,
+                display_name=model.owner.display_name,
+            )
+            if model.owner is not None
+            else None
+        ),
         title=model.title,
         description=model.description,
         original_filename=model.original_filename,

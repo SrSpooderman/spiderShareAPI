@@ -9,6 +9,7 @@ from app.modules.videos.domain.video import (
     Video,
     VideoAspectRatio,
     VideoCategory,
+    VideoOwner,
     VideoProcessingStatus,
     VideoReaction,
     VideoTag,
@@ -37,6 +38,20 @@ class VideoTagResponse(BaseModel):
     @classmethod
     def from_domain(cls, tag: VideoTag) -> "VideoTagResponse":
         return cls(id=tag.id, name=tag.name)
+
+
+class VideoOwnerResponse(BaseModel):
+    id: UUID
+    username: str
+    display_name: str | None
+
+    @classmethod
+    def from_domain(cls, owner: VideoOwner) -> "VideoOwnerResponse":
+        return cls(
+            id=owner.id,
+            username=owner.username,
+            display_name=owner.display_name,
+        )
 
 
 class VideoReactionCountResponse(BaseModel):
@@ -95,6 +110,7 @@ class VideoSummaryResponse(BaseModel):
     title: str
     description: str
     owner_id: UUID
+    owner: VideoOwnerResponse
     is_registered_only: bool
     edited: bool
     edited_at: datetime | None
@@ -113,6 +129,14 @@ class VideoSummaryResponse(BaseModel):
             title=video.title,
             description=video.description,
             owner_id=video.owner_id,
+            owner=VideoOwnerResponse.from_domain(
+                video.owner
+                or VideoOwner(
+                    id=video.owner_id,
+                    username="-",
+                    display_name=None,
+                )
+            ),
             is_registered_only=video.is_registered_only,
             edited=video.edited,
             edited_at=video.edited_at,

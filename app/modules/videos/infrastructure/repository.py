@@ -65,6 +65,7 @@ class SqlAlchemyVideoRepository(VideoRepository):
                     VideoTagAssignmentModel.tag,
                 ),
                 selectinload(VideoModel.variants),
+                selectinload(VideoModel.owner),
             )
             .order_by(
                 self._popularity_score_expression().desc(),
@@ -255,6 +256,7 @@ class SqlAlchemyVideoRepository(VideoRepository):
                     VideoTagAssignmentModel.tag,
                 ),
                 selectinload(VideoModel.variants),
+                selectinload(VideoModel.owner),
             )
             .order_by(VideoFavoriteModel.created_at.desc())
             .limit(limit)
@@ -374,6 +376,7 @@ class SqlAlchemyVideoRepository(VideoRepository):
                     VideoTagAssignmentModel.tag,
                 ),
                 selectinload(VideoModel.variants),
+                selectinload(VideoModel.owner),
             )
         )
 
