@@ -7,6 +7,7 @@ from rq import Queue, Worker, get_current_job
 
 from app.modules.videos.application.process_video import ProcessVideo
 from app.modules.videos.infrastructure.repository import SqlAlchemyVideoRepository
+from app.modules.users.infrastructure.models import UserModel
 from app.shared.infrastructure.db.session import SessionLocal
 from app.shared.infrastructure.jaimito_logging import JaimitoWorkerLogger
 from app.shared.infrastructure.logging import (
