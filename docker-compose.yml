@@ -52,7 +52,6 @@ services:
       target: production
       args:
         VITE_API_BASE_URL: ${BACKOFFICE_API_BASE_URL:-http://localhost:8000}
-        VITE_USE_MOCKS: ${BACKOFFICE_USE_MOCKS:-true}
     container_name: spidershare_backoffice
     restart: unless-stopped
     ports:

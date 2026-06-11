@@ -4,6 +4,7 @@ import { AppShell } from "@/layouts/AppShell";
 import { AuditPage } from "@/modules/audit/pages/AuditPage";
 import { DashboardPage } from "@/modules/dashboard/pages/DashboardPage";
 import { LoginPage } from "@/modules/auth/pages/LoginPage";
+import { RequireAuth } from "@/modules/auth/RequireAuth";
 import { UserListPage } from "@/modules/users/pages/UserListPage";
 import { VideoDetailPage } from "@/modules/videos/pages/VideoDetailPage";
 import { VideoListPage } from "@/modules/videos/pages/VideoListPage";
@@ -18,7 +19,11 @@ export const router = createBrowserRouter([
   },
   {
     path: "/",
-    element: <AppShell />,
+    element: (
+      <RequireAuth>
+        <AppShell />
+      </RequireAuth>
+    ),
     children: [
       { index: true, element: <Navigate to="/dashboard" replace /> },
       { path: "dashboard", element: <DashboardPage /> },

@@ -1,7 +1,8 @@
 import { env } from "@/shared/config/env";
+import { clearStoredToken, getStoredToken } from "@/modules/auth/authStorage";
 
 type RequestOptions = RequestInit & {
-  token?: string;
+  skipAuth?: boolean;
 };
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -10,8 +11,10 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   if (!(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
-  if (options.token) {
-    headers.set("Authorization", `Bearer ${options.token}`);
+  const token = options.skipAuth ? null : getStoredToken();
+
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
   }
 
   const response = await fetch(`${env.apiBaseUrl}${path}`, {
@@ -20,6 +23,9 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   });
 
   if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      clearStoredToken();
+    }
     throw new Error(`Request failed with status ${response.status}`);
   }
 

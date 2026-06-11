@@ -178,7 +178,6 @@ Variables principales:
 | `CORS_ALLOWED_ORIGINS` | Lista JSON de origenes permitidos para frontends, incluido backoffice. |
 | `BACKOFFICE_PORT` | Puerto publicado por Docker para el backoffice. |
 | `BACKOFFICE_API_BASE_URL` | URL base usada por el backoffice para llamar a la API. |
-| `BACKOFFICE_USE_MOCKS` | Usa datos mock en el backoffice mientras no existan endpoints admin reales. |
 | `DATABASE_URL` | URL SQLAlchemy usada por app y Alembic. |
 | `MYSQL_HOST` | Host MySQL para compose/configuracion auxiliar. |
 | `MYSQL_PORT` | Puerto MySQL publicado en desarrollo. |
@@ -215,7 +214,6 @@ APP_PORT=8000
 CORS_ALLOWED_ORIGINS=["http://localhost:5173"]
 BACKOFFICE_PORT=5173
 BACKOFFICE_API_BASE_URL=http://localhost:8000
-BACKOFFICE_USE_MOCKS=true
 
 MYSQL_DATABASE=spidershare
 MYSQL_USER=spidershare

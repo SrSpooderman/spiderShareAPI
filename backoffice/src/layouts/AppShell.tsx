@@ -3,6 +3,7 @@ import {
   ClipboardList,
   LayoutDashboard,
   ListVideo,
+  LogOut,
   ScrollText,
   ServerCog,
   ShieldCheck,
@@ -10,6 +11,7 @@ import {
 } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 
+import { useAuth } from "@/modules/auth/AuthContext";
 import { env } from "@/shared/config/env";
 
 const navItems = [
@@ -23,6 +25,8 @@ const navItems = [
 ];
 
 export function AppShell() {
+  const { logout } = useAuth();
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -56,7 +60,11 @@ export function AppShell() {
           </div>
           <div className="topbar-status">
             <span className="status-dot ok" />
-            <span>{env.useMocks ? "Datos mock" : env.apiBaseUrl}</span>
+            <span>{env.apiBaseUrl}</span>
+            <button className="button ghost" type="button" onClick={logout} title="Cerrar sesion">
+              <LogOut size={16} />
+              <span>Salir</span>
+            </button>
           </div>
         </header>
         <div className="page-frame">

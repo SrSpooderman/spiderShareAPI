@@ -30,6 +30,11 @@ select {
   font: inherit;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -121,6 +126,11 @@ th {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.topbar-status {
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .page-frame {
@@ -450,6 +460,38 @@ th {
 
 .login-panel p {
   color: #64748b;
+}
+
+.field {
+  display: grid;
+  gap: 7px;
+}
+
+.field span {
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.field input {
+  min-height: 42px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 0 12px;
+  background: #ffffff;
+}
+
+.field input:focus {
+  border-color: #2563eb;
+  outline: 3px solid rgb(37 99 235 / 0.16);
+}
+
+.form-error {
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fef2f2;
+  color: #991b1b !important;
 }
 
 @media (max-width: 980px) {

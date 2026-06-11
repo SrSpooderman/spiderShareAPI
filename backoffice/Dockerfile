@@ -10,9 +10,7 @@ CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 
 FROM base AS build
 ARG VITE_API_BASE_URL=/api
-ARG VITE_USE_MOCKS=false
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
-ENV VITE_USE_MOCKS=${VITE_USE_MOCKS}
 RUN npm install
 COPY . .
 RUN npm run build
