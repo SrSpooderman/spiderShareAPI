@@ -8,6 +8,7 @@ import {
   QueueJob,
   RawLogLine,
   UserListFilters,
+  UserUpdateInput,
   VideoDetail,
   VideoListFilters,
   VideoSummary,
@@ -78,6 +79,24 @@ export const backofficeService = {
     return apiRequest<QueueJob[]>("/admin/queue/jobs");
   },
 
+  async requeueJob(jobId: string): Promise<QueueJob> {
+    return apiRequest<QueueJob>(`/admin/queue/jobs/${jobId}/requeue`, {
+      method: "POST"
+    });
+  },
+
+  async deleteJob(jobId: string): Promise<void> {
+    return apiRequest<void>(`/admin/queue/jobs/${jobId}`, {
+      method: "DELETE"
+    });
+  },
+
+  async clearFailedJobs(): Promise<void> {
+    return apiRequest<void>("/admin/queue/failed-jobs", {
+      method: "DELETE"
+    });
+  },
+
   async getUsers(filters: UserListFilters = {}): Promise<BackofficeUser[]> {
     return apiRequest<BackofficeUser[]>(
       `/admin/users${queryString({
@@ -90,6 +109,13 @@ export const backofficeService = {
 
   async getUser(userId: string): Promise<BackofficeUserDetail> {
     return apiRequest<BackofficeUserDetail>(`/admin/users/${userId}`);
+  },
+
+  async updateUser(userId: string, input: UserUpdateInput): Promise<BackofficeUserDetail> {
+    return apiRequest<BackofficeUserDetail>(`/admin/users/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify(input)
+    });
   },
 
   async getAuditEntries(pagination: OffsetPagination = {}): Promise<AuditEntry[]> {

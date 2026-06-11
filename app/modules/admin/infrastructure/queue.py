@@ -23,6 +23,15 @@ class AdminQueueInspector:
     def jobs(self) -> list[AdminQueueJobResponse]:
         raise NotImplementedError
 
+    def delete_job(self, job_id: str) -> bool:
+        raise NotImplementedError
+
+    def requeue_job(self, job_id: str) -> AdminQueueJobResponse | None:
+        raise NotImplementedError
+
+    def clear_failed_jobs(self) -> int:
+        raise NotImplementedError
+
 
 class RqAdminQueueInspector(AdminQueueInspector):
     def __init__(self, redis_url: str | None = None, queue_name: str | None = None) -> None:
@@ -69,6 +78,52 @@ class RqAdminQueueInspector(AdminQueueInspector):
             return []
 
         return [job for job in queued + started + failed if job is not None]
+
+    def delete_job(self, job_id: str) -> bool:
+        if Job is None:
+            return False
+        try:
+            job = Job.fetch(job_id, connection=self.connection)
+        except Exception:
+            return False
+        job.delete()
+        return True
+
+    def requeue_job(self, job_id: str) -> AdminQueueJobResponse | None:
+        if Job is None:
+            return None
+        try:
+            job = Job.fetch(job_id, connection=self.connection)
+        except Exception:
+            return None
+
+        video_id = self._video_id(job)
+        if video_id == "-":
+            return None
+
+        try:
+            job.delete()
+            queued_job = self.queue.enqueue(
+                "app.workers.video_processing.process_video_job",
+                video_id,
+                job_id=job_id,
+                retry=getattr(job, "retry", None),
+                job_timeout=settings.video_processing_job_timeout_seconds,
+            )
+        except Exception:
+            return None
+
+        return self._job_response(queued_job, "queued")
+
+    def clear_failed_jobs(self) -> int:
+        if FailedJobRegistry is None or Job is None:
+            return 0
+        registry = FailedJobRegistry(self.queue.name, connection=self.connection)
+        deleted = 0
+        for job_id in registry.get_job_ids():
+            if self.delete_job(job_id):
+                deleted += 1
+        return deleted
 
     def _registry_count(self, registry_class) -> int:
         if registry_class is None:

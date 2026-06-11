@@ -1,7 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 
+import { useAuth } from "@/modules/auth/AuthContext";
 import { backofficeService } from "@/shared/api/backofficeService";
+import { UserRole } from "@/shared/types/backoffice";
 import { Badge } from "@/shared/ui/Badge";
 import { EmptyState } from "@/shared/ui/EmptyState";
 import { PageHeader } from "@/shared/ui/PageHeader";
@@ -9,10 +11,21 @@ import { StatusBadge } from "@/shared/ui/StatusBadge";
 
 export function UserDetailPage() {
   const { userId = "" } = useParams();
+  const queryClient = useQueryClient();
+  const { isSuperAdmin, user: currentUser } = useAuth();
   const { data: user, isError, isLoading } = useQuery({
     queryKey: ["user", userId],
     queryFn: () => backofficeService.getUser(userId),
     enabled: Boolean(userId)
+  });
+  const updateUser = useMutation({
+    mutationFn: (input: { role?: Exclude<UserRole, "super_admin">; isActive?: boolean }) =>
+      backofficeService.updateUser(userId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["user", userId] });
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["audit"] });
+    }
   });
 
   if (!user) {
@@ -29,6 +42,9 @@ export function UserDetailPage() {
       />
     );
   }
+
+  const canManageUser =
+    isSuperAdmin && currentUser?.id !== user.id && user.role !== "super_admin";
 
   return (
     <section className="stack">
@@ -57,10 +73,39 @@ export function UserDetailPage() {
           <div className="panel-header">
             <h2>Acciones</h2>
           </div>
-          <EmptyState
-            title="Acciones no conectadas"
-            description="Activar, desactivar y cambiar rol quedan pendientes para conectar reglas de permisos y auditoria especifica."
-          />
+          {canManageUser ? (
+            <div className="action-list">
+              <label className="field">
+                <span>Rol</span>
+                <select
+                  disabled={updateUser.isPending}
+                  onChange={(event) => {
+                    const nextRole = event.target.value as Exclude<UserRole, "super_admin">;
+                    if (nextRole !== user.role) {
+                      updateUser.mutate({ role: nextRole });
+                    }
+                  }}
+                  value={user.role === "super_admin" ? "admin" : user.role}
+                >
+                  <option value="user">user</option>
+                  <option value="admin">admin</option>
+                </select>
+              </label>
+              <button
+                className={user.isActive ? "button danger" : "button primary"}
+                disabled={updateUser.isPending}
+                onClick={() => updateUser.mutate({ isActive: !user.isActive })}
+                type="button"
+              >
+                {user.isActive ? "Desactivar usuario" : "Activar usuario"}
+              </button>
+            </div>
+          ) : (
+            <EmptyState
+              title="Sin acciones disponibles"
+              description="No puedes modificar este usuario desde tu sesion actual."
+            />
+          )}
         </article>
       </div>
 

@@ -111,6 +111,11 @@ class AdminUserDetailResponse(AdminUserResponse):
     recent_videos: list[AdminVideoSummaryResponse] = Field(alias="recentVideos")
 
 
+class AdminUserUpdateRequest(CamelModel):
+    role: UserRole | None = None
+    is_active: bool | None = Field(default=None, alias="isActive")
+
+
 class AdminAuditEntryResponse(CamelModel):
     id: str
     actor_username: str = Field(alias="actorUsername")

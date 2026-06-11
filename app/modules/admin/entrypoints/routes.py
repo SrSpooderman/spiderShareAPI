@@ -8,6 +8,7 @@ from app.modules.admin.entrypoints.schemas import (
     AdminQueueJobResponse,
     AdminRawLogLineResponse,
     AdminUserDetailResponse,
+    AdminUserUpdateRequest,
     AdminUserResponse,
     AdminVideoDetailResponse,
     AdminVideoSummaryResponse,
@@ -22,7 +23,9 @@ from app.modules.admin.wiring import (
     get_admin_read_model,
 )
 from app.modules.auth.wiring import require_admin, require_super_admin
-from app.modules.users.domain.user import User
+from app.modules.users.domain.ports import UserRepository
+from app.modules.users.domain.user import User, UserRole, can_create_user_with_role, can_manage_user
+from app.modules.users.wiring import get_user_repository
 from app.modules.videos.application.delete_video import DeleteVideo
 from app.modules.videos.application.errors import VideoNotFoundError, VideoPermissionError
 from app.modules.videos.domain.ports import VideoProcessingQueue, VideoRepository, VideoStorage
@@ -36,6 +39,13 @@ from app.modules.videos.wiring import (
 
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+def _fields_set(request) -> set[str]:
+    fields_set = getattr(request, "model_fields_set", None)
+    if fields_set is not None:
+        return fields_set
+    return getattr(request, "__fields_set__", set())
 
 
 @router.get("/dashboard", response_model=AdminDashboardResponse)
@@ -252,6 +262,97 @@ def admin_queue_jobs(
     return queue_inspector.jobs()
 
 
+@router.post("/queue/jobs/{job_id}/requeue", response_model=AdminQueueJobResponse)
+def admin_requeue_job(
+    job_id: str,
+    current_user: User = Depends(require_super_admin),
+    queue_inspector: AdminQueueInspector = Depends(get_admin_queue_inspector),
+    event_recorder: AdminEventRecorder = Depends(get_admin_event_recorder),
+) -> AdminQueueJobResponse:
+    job = queue_inspector.requeue_job(job_id)
+    if job is None:
+        event_recorder.audit(
+            actor=current_user,
+            action="queue.job.requeue",
+            entity_type="queue_job",
+            entity_id=job_id,
+            result="failed",
+            metadata={"reason": "not_found_or_unqueueable"},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found or cannot be requeued",
+        )
+
+    event_recorder.audit(
+        actor=current_user,
+        action="queue.job.requeue",
+        entity_type="queue_job",
+        entity_id=job_id,
+        result="success",
+        metadata={"video_id": job.video_id},
+    )
+    event_recorder.worker_event(
+        event_type="queue.job.requeued",
+        level="info",
+        message=f"Queue job requeued by {current_user.username}",
+        video_id=UUID(job.video_id) if job.video_id != "-" else None,
+        job_id=job_id,
+        metadata={"actor_user_id": str(current_user.id)},
+    )
+    return job
+
+
+@router.delete("/queue/jobs/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+def admin_delete_job(
+    job_id: str,
+    current_user: User = Depends(require_super_admin),
+    queue_inspector: AdminQueueInspector = Depends(get_admin_queue_inspector),
+    event_recorder: AdminEventRecorder = Depends(get_admin_event_recorder),
+) -> Response:
+    deleted = queue_inspector.delete_job(job_id)
+    if not deleted:
+        event_recorder.audit(
+            actor=current_user,
+            action="queue.job.delete",
+            entity_type="queue_job",
+            entity_id=job_id,
+            result="failed",
+            metadata={"reason": "not_found"},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+
+    event_recorder.audit(
+        actor=current_user,
+        action="queue.job.delete",
+        entity_type="queue_job",
+        entity_id=job_id,
+        result="success",
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete("/queue/failed-jobs", status_code=status.HTTP_204_NO_CONTENT)
+def admin_clear_failed_jobs(
+    current_user: User = Depends(require_super_admin),
+    queue_inspector: AdminQueueInspector = Depends(get_admin_queue_inspector),
+    event_recorder: AdminEventRecorder = Depends(get_admin_event_recorder),
+) -> Response:
+    deleted = queue_inspector.clear_failed_jobs()
+    event_recorder.audit(
+        actor=current_user,
+        action="queue.failed_jobs.clear",
+        entity_type="queue",
+        entity_id="failed_jobs",
+        result="success",
+        metadata={"deleted_jobs": deleted},
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/users", response_model=list[AdminUserResponse])
 def admin_users(
     username: str | None = Query(default=None),
@@ -276,6 +377,129 @@ def admin_get_user(
             detail="User not found",
         )
     return user
+
+
+@router.patch("/users/{user_id}", response_model=AdminUserDetailResponse)
+def admin_update_user(
+    user_id: UUID,
+    request: AdminUserUpdateRequest,
+    current_user: User = Depends(require_super_admin),
+    event_recorder: AdminEventRecorder = Depends(get_admin_event_recorder),
+    read_model: AdminReadModel = Depends(get_admin_read_model),
+    user_repository: UserRepository = Depends(get_user_repository),
+) -> AdminUserDetailResponse:
+    target_user = user_repository.get_by_id(user_id)
+    if target_user is None:
+        event_recorder.audit(
+            actor=current_user,
+            action="user.update",
+            entity_type="user",
+            entity_id=user_id,
+            result="failed",
+            metadata={"reason": "not_found"},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    fields_set = _fields_set(request)
+    if current_user.id == target_user.id and ({"role", "is_active"} & fields_set):
+        event_recorder.audit(
+            actor=current_user,
+            action="user.update",
+            entity_type="user",
+            entity_id=user_id,
+            result="failed",
+            metadata={"reason": "self_role_or_status_change"},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not allowed to change your own role or active status",
+        )
+
+    if not can_manage_user(current_user.role, target_user.role):
+        event_recorder.audit(
+            actor=current_user,
+            action="user.update",
+            entity_type="user",
+            entity_id=user_id,
+            result="failed",
+            metadata={"reason": "target_not_manageable"},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not allowed to manage that user",
+        )
+
+    if "role" in fields_set:
+        if request.role == UserRole.SUPER_ADMIN:
+            event_recorder.audit(
+                actor=current_user,
+                action="user.update",
+                entity_type="user",
+                entity_id=user_id,
+                result="failed",
+                metadata={"reason": "assign_super_admin"},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not allowed to assign super admin role",
+            )
+        if request.role is not None and not can_create_user_with_role(current_user.role, request.role):
+            event_recorder.audit(
+                actor=current_user,
+                action="user.update",
+                entity_type="user",
+                entity_id=user_id,
+                result="failed",
+                metadata={"reason": "role_not_assignable", "requested_role": request.role.value},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not allowed to assign that role",
+            )
+
+    updated_user = user_repository.update(
+        user_id,
+        role=request.role.value if request.role is not None else None,
+        is_active=request.is_active if "is_active" in fields_set else None,
+    )
+    if updated_user is None:
+        event_recorder.audit(
+            actor=current_user,
+            action="user.update",
+            entity_type="user",
+            entity_id=user_id,
+            result="failed",
+            metadata={"reason": "not_found_after_update"},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    event_recorder.audit(
+        actor=current_user,
+        action="user.update",
+        entity_type="user",
+        entity_id=user_id,
+        result="success",
+        metadata={
+            "previous_role": target_user.role.value,
+            "new_role": updated_user.role.value,
+            "previous_is_active": target_user.is_active,
+            "new_is_active": updated_user.is_active,
+        },
+    )
+
+    refreshed = read_model.get_user(user_id)
+    if refreshed is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+    return refreshed
 
 
 @router.get("/audit", response_model=list[AdminAuditEntryResponse])

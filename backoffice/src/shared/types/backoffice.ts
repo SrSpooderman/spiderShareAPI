@@ -109,6 +109,11 @@ export type BackofficeUserDetail = BackofficeUser & {
   recentVideos: VideoSummary[];
 };
 
+export type UserUpdateInput = {
+  role?: Exclude<UserRole, "super_admin">;
+  isActive?: boolean;
+};
+
 export type AuditEntry = {
   id: string;
   actorUsername: string;

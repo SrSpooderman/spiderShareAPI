@@ -1,5 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { RefreshCcw, Trash2 } from "lucide-react";
 
+import { useAuth } from "@/modules/auth/AuthContext";
 import { backofficeService } from "@/shared/api/backofficeService";
 import { Badge } from "@/shared/ui/Badge";
 import { EmptyState } from "@/shared/ui/EmptyState";
@@ -7,9 +9,33 @@ import { PageHeader } from "@/shared/ui/PageHeader";
 import { QueryPanelState } from "@/shared/ui/QueryPanelState";
 
 export function WorkerQueuePage() {
+  const queryClient = useQueryClient();
+  const { isSuperAdmin } = useAuth();
   const { data = [], isError, isLoading } = useQuery({
     queryKey: ["queue-jobs"],
     queryFn: backofficeService.getQueueJobs
+  });
+  const requeueJob = useMutation({
+    mutationFn: backofficeService.requeueJob,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["queue-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["audit"] });
+      queryClient.invalidateQueries({ queryKey: ["worker-events"] });
+    }
+  });
+  const deleteJob = useMutation({
+    mutationFn: backofficeService.deleteJob,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["queue-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["audit"] });
+    }
+  });
+  const clearFailedJobs = useMutation({
+    mutationFn: backofficeService.clearFailedJobs,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["queue-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["audit"] });
+    }
   });
 
   return (
@@ -18,6 +44,19 @@ export function WorkerQueuePage() {
         eyebrow="Worker"
         title="Cola RQ"
         description="Vista operativa de jobs pendientes, activos y fallidos."
+        actions={
+          isSuperAdmin ? (
+            <button
+              className="button danger"
+              disabled={clearFailedJobs.isPending}
+              onClick={() => clearFailedJobs.mutate()}
+              type="button"
+            >
+              <Trash2 size={16} />
+              Limpiar fallidos
+            </button>
+          ) : null
+        }
       />
       <article className="panel">
         <QueryPanelState
@@ -37,6 +76,7 @@ export function WorkerQueuePage() {
                 <th>Estado</th>
                 <th>Intentos</th>
                 <th>Encolado</th>
+                {isSuperAdmin ? <th className="align-right">Acciones</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -47,6 +87,28 @@ export function WorkerQueuePage() {
                   <td><Badge tone={job.status === "failed" ? "red" : "blue"}>{job.status}</Badge></td>
                   <td>{job.attempts}</td>
                   <td>{job.enqueuedAt}</td>
+                  {isSuperAdmin ? (
+                    <td className="align-right">
+                      <button
+                        className="button ghost"
+                        disabled={requeueJob.isPending}
+                        onClick={() => requeueJob.mutate(job.id)}
+                        title="Reencolar job"
+                        type="button"
+                      >
+                        <RefreshCcw size={15} />
+                      </button>
+                      <button
+                        className="button ghost"
+                        disabled={deleteJob.isPending}
+                        onClick={() => deleteJob.mutate(job.id)}
+                        title="Eliminar job"
+                        type="button"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
