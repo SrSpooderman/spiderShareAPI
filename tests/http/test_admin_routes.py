@@ -12,7 +12,11 @@ from app.modules.admin.entrypoints.schemas import (
     AdminVideoSummaryResponse,
     AdminWorkerEventResponse,
 )
-from app.modules.admin.wiring import get_admin_queue_inspector, get_admin_read_model
+from app.modules.admin.wiring import (
+    get_admin_event_recorder,
+    get_admin_queue_inspector,
+    get_admin_read_model,
+)
 from app.modules.auth.wiring import get_current_user, require_admin, require_super_admin
 from app.modules.videos.domain.video import VideoProcessingStatus
 from app.modules.videos.wiring import (
@@ -121,6 +125,18 @@ class FakeAdminQueueInspector:
         return []
 
 
+class FakeAdminEventRecorder:
+    def __init__(self) -> None:
+        self.worker_events = []
+        self.audit_entries = []
+
+    def worker_event(self, **kwargs) -> None:
+        self.worker_events.append(kwargs)
+
+    def audit(self, **kwargs) -> None:
+        self.audit_entries.append(kwargs)
+
+
 @pytest.mark.http
 def test_admin_routes_require_admin_role(app, client, user_factory) -> None:
     user = user_factory(role="user")
@@ -192,6 +208,7 @@ def test_admin_retry_requires_super_admin_and_requeues_video(
     video_repository = FakeVideoRepository()
     video_storage = FakeVideoStorage()
     queue = FakeVideoProcessingQueue()
+    event_recorder = FakeAdminEventRecorder()
     video = video_repository.add(
         video_factory(processing_status=VideoProcessingStatus.FAILED)
     )
@@ -199,6 +216,7 @@ def test_admin_retry_requires_super_admin_and_requeues_video(
     read_model.video_id = video.id
     app.dependency_overrides[require_super_admin] = lambda: super_admin
     app.dependency_overrides[get_admin_read_model] = lambda: read_model
+    app.dependency_overrides[get_admin_event_recorder] = lambda: event_recorder
     app.dependency_overrides[get_video_repository] = lambda: video_repository
     app.dependency_overrides[get_video_storage] = lambda: video_storage
     app.dependency_overrides[get_video_processing_queue] = lambda: queue
@@ -210,3 +228,6 @@ def test_admin_retry_requires_super_admin_and_requeues_video(
     assert video_repository.reset == [video.id]
     assert queue.enqueued == [video.id]
     assert queue.force_flags == [True]
+    assert event_recorder.audit_entries[0]["action"] == "processing.retry.requested"
+    assert event_recorder.audit_entries[0]["result"] == "success"
+    assert event_recorder.worker_events[0]["event_type"] == "processing.retry.requested"

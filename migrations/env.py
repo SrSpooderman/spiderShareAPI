@@ -8,6 +8,7 @@ from app.shared.infrastructure.idempotency import IdempotencyRecordModel
 from config.settings import settings
 
 # Models
+from app.modules.admin.infrastructure.models import AdminAuditEntryModel, WorkerEventModel
 from app.modules.steam.infrastructure.models import SteamGameModel
 from app.modules.users.infrastructure.models import UserModel
 from app.modules.videos.infrastructure.models import (

@@ -393,10 +393,10 @@ Parametros:
 | `POST` | `/admin/videos/{video_id}/processing/retry` | Super admin | Limpia salidas y reencola procesado de un video no completo. |
 | `DELETE` | `/admin/videos/{video_id}` | Super admin | Borra un video desde backoffice. |
 | `GET` | `/admin/worker/events` | Admin | Eventos estructurados derivados del procesado. |
-| `GET` | `/admin/worker/logs` | Admin | Placeholder para logs crudos del worker si se configura fuente. |
+| `GET` | `/admin/worker/logs` | Admin | Vista tipo consola generada desde `worker_events`. |
 | `GET` | `/admin/queue/jobs` | Admin | Jobs visibles en RQ. |
 | `GET` | `/admin/users` | Admin | Usuarios con conteo basico de videos. |
-| `GET` | `/admin/audit` | Admin | Registro de auditoria; por ahora vacio hasta crear tabla dedicada. |
+| `GET` | `/admin/audit` | Admin | Registro de auditoria administrativa. |
 
 Filtros de `GET /videos`:
 
@@ -539,6 +539,17 @@ El worker usa `worker=jaimito_worker`, rellena `job_id` y `video_id`, registra `
 - `event=jaimito.job.finished`
 - `event=jaimito.job.failed`
 - `event=jaimito.worker.shutting_down`
+
+Ademas, el worker persiste eventos operativos en `worker_events` para que el backoffice pueda mostrar timeline y logs:
+
+- arranque y apagado del worker
+- Redis listo
+- job recibido
+- procesado completado
+- procesado fallido
+- reintentos solicitados desde backoffice
+
+Las acciones sensibles del backoffice se registran en `admin_audit_entries`, incluyendo actor, accion, entidad afectada, resultado, metadata y fecha.
 
 ## Desarrollo Local sin Docker
 

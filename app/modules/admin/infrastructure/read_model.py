@@ -17,6 +17,10 @@ from app.modules.admin.entrypoints.schemas import (
     AdminVideoVariantResponse,
     AdminWorkerEventResponse,
 )
+from app.modules.admin.infrastructure.models import (
+    AdminAuditEntryModel,
+    WorkerEventModel,
+)
 from app.modules.users.infrastructure.models import UserModel
 from app.modules.videos.domain.video import VideoProcessingStatus
 from app.modules.videos.infrastructure.models import (
@@ -188,35 +192,34 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
         offset: int = 0,
     ) -> list[AdminWorkerEventResponse]:
         statement = (
-            select(VideoProcessingErrorModel)
-            .order_by(VideoProcessingErrorModel.created_at.desc())
+            select(WorkerEventModel)
+            .order_by(WorkerEventModel.created_at.desc())
             .limit(limit)
             .offset(offset)
         )
         conditions = []
         if video_id is not None:
-            conditions.append(VideoProcessingErrorModel.video_id == str(video_id))
+            conditions.append(WorkerEventModel.video_id == str(video_id))
         if job_id:
-            conditions.append(VideoProcessingErrorModel.job_id == job_id)
+            conditions.append(WorkerEventModel.job_id == job_id)
+        if level:
+            conditions.append(WorkerEventModel.level == level)
         if conditions:
             statement = statement.where(*conditions)
 
-        events = [
+        return [
             AdminWorkerEventResponse(
-                id=f"processing-error-{model.id}",
-                event_type="video.processing.failed",
-                level="error",
-                message=model.error_message,
-                video_id=UUID(model.video_id),
+                id=model.id,
+                event_type=model.event_type,
+                level=model.level,
+                message=model.message,
+                video_id=UUID(model.video_id) if model.video_id is not None else None,
                 job_id=model.job_id,
-                worker_name="jaimito_worker",
+                worker_name=model.worker_name,
                 created_at=model.created_at,
             )
             for model in self.session.scalars(statement).all()
         ]
-        if level is not None:
-            events = [event for event in events if event.level == level]
-        return events
 
     def users(self) -> list[AdminUserResponse]:
         video_counts = {
@@ -241,13 +244,44 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
         ]
 
     def audit_entries(self) -> list[AdminAuditEntryResponse]:
-        return []
+        statement = (
+            select(AdminAuditEntryModel)
+            .order_by(AdminAuditEntryModel.created_at.desc())
+            .limit(100)
+        )
+        return [
+            AdminAuditEntryResponse(
+                id=model.id,
+                actor_username=model.actor_username,
+                action=model.action,
+                entity=f"{model.entity_type}:{model.entity_id}",
+                result=model.result,
+                created_at=model.created_at,
+            )
+            for model in self.session.scalars(statement).all()
+        ]
 
     def raw_logs(self) -> list[AdminRawLogLineResponse]:
+        statement = (
+            select(WorkerEventModel)
+            .order_by(WorkerEventModel.created_at.desc())
+            .limit(200)
+        )
         return [
             AdminRawLogLineResponse(
-                line="Raw worker logs are not configured yet; use /admin/worker/events.",
-                source="system",
+                line=(
+                    f"event={model.event_type} level={model.level} "
+                    f"worker={model.worker_name} video_id={model.video_id or '-'} "
+                    f"job_id={model.job_id or '-'} message=\"{model.message}\""
+                ),
+                source="worker_events",
+                created_at=model.created_at,
+            )
+            for model in self.session.scalars(statement).all()
+        ] or [
+            AdminRawLogLineResponse(
+                line="No worker events stored yet.",
+                source="worker_events",
                 created_at=datetime.now(timezone.utc),
             )
         ]

@@ -20,19 +20,20 @@
     - Pendiente: permitir borrar videos desde backoffice solo a `super_admin`.
     - Pendiente: documentar que el backoffice debe usar paginacion y no cargar todo el catalogo de golpe.
   - Worker, cola y logs:
-    - Pendiente: crear tabla de eventos operativos, por ejemplo `worker_events` o `video_processing_events`.
-    - Pendiente: guardar eventos relevantes del worker: arranque, Redis listo, job recibido, procesado iniciado, procesado terminado, fallo, apagado y reintento manual.
-    - Pendiente: cada evento debe guardar `event_type`, `level`, `message`, `video_id`, `job_id`, `worker_name`, metadata JSON y `created_at`.
-    - Pendiente: endpoint admin para consultar eventos del worker con filtros por `video_id`, `job_id`, nivel, tipo de evento y rango de fechas.
+    - Hecho: tabla `worker_events` para eventos operativos.
+    - Hecho: guardar eventos relevantes del worker: arranque, Redis listo, job recibido, procesado terminado, fallo, apagado y reintento manual.
+    - Hecho: cada evento guarda `event_type`, `level`, `message`, `video_id`, `job_id`, `worker_name`, metadata JSON y `created_at`.
+    - Hecho: endpoint admin para consultar eventos del worker con filtros por `video_id`, `job_id` y nivel.
     - Pendiente: vista tipo timeline en el detalle del video usando eventos del worker y errores de procesado.
-    - Pendiente: decidir si tambien se quiere mostrar una vista `tail` de logs crudos; si se hace, que sea secundaria y no la fuente principal.
+    - Hecho: endpoint y pantalla de logs crudos generados desde `worker_events`.
   - Usuarios:
     - Pendiente: listado admin de usuarios con filtros por username, rol y estado.
     - Pendiente: detalle de usuario con sus videos recientes y conteos basicos.
     - Pendiente: acciones de activar/desactivar usuario y cambio de rol respetando las reglas actuales.
   - Auditoria de acciones administrativas:
-    - Pendiente: crear registro de acciones admin para saber quien hizo reintentos, borrados, cambios de usuario o limpiezas.
-    - Pendiente: guardar `actor_user_id`, accion, entidad afectada, metadata JSON, resultado y timestamp.
+    - Hecho: tabla `admin_audit_entries` para saber quien hizo reintentos, borrados, cambios de usuario o limpiezas.
+    - Hecho: guardar `actor_user_id`, accion, entidad afectada, metadata JSON, resultado y timestamp.
+    - Pendiente: ampliar auditoria a cambios de usuario cuando esas acciones se conecten desde el backoffice.
   - Frontend del backoffice:
     - Pendiente: decidir si el backoffice vive dentro de este repo o como frontend separado.
     - Pendiente: pantalla de login o reutilizacion del login actual con token JWT.

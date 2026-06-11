@@ -12,9 +12,14 @@ from app.modules.admin.entrypoints.schemas import (
     AdminVideoSummaryResponse,
     AdminWorkerEventResponse,
 )
+from app.modules.admin.infrastructure.events import AdminEventRecorder
 from app.modules.admin.infrastructure.queue import AdminQueueInspector
 from app.modules.admin.infrastructure.read_model import AdminReadModel
-from app.modules.admin.wiring import get_admin_queue_inspector, get_admin_read_model
+from app.modules.admin.wiring import (
+    get_admin_event_recorder,
+    get_admin_queue_inspector,
+    get_admin_read_model,
+)
 from app.modules.auth.wiring import require_admin, require_super_admin
 from app.modules.users.domain.user import User
 from app.modules.videos.application.delete_video import DeleteVideo
@@ -77,19 +82,36 @@ def admin_get_video(
 @router.post("/videos/{video_id}/processing/retry", response_model=AdminVideoDetailResponse)
 def admin_retry_video_processing(
     video_id: UUID,
-    _current_user: User = Depends(require_super_admin),
+    current_user: User = Depends(require_super_admin),
     read_model: AdminReadModel = Depends(get_admin_read_model),
+    event_recorder: AdminEventRecorder = Depends(get_admin_event_recorder),
     video_repository: VideoRepository = Depends(get_video_repository),
     video_storage: VideoStorage = Depends(get_video_storage),
     video_processing_queue: VideoProcessingQueue = Depends(get_video_processing_queue),
 ) -> AdminVideoDetailResponse:
     video = video_repository.get_by_id(video_id)
     if video is None:
+        event_recorder.audit(
+            actor=current_user,
+            action="processing.retry.requested",
+            entity_type="video",
+            entity_id=video_id,
+            result="failed",
+            metadata={"reason": "not_found"},
+        )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Video not found",
         )
     if video.processing_status == VideoProcessingStatus.READY:
+        event_recorder.audit(
+            actor=current_user,
+            action="processing.retry.requested",
+            entity_type="video",
+            entity_id=video_id,
+            result="failed",
+            metadata={"reason": "already_ready"},
+        )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Video processing is already complete",
@@ -98,6 +120,14 @@ def admin_retry_video_processing(
     try:
         video_storage.delete_processing_outputs(video_id)
         if video_repository.reset_processing(video_id) is None:
+            event_recorder.audit(
+                actor=current_user,
+                action="processing.retry.requested",
+                entity_type="video",
+                entity_id=video_id,
+                result="failed",
+                metadata={"reason": "not_found_after_reset"},
+            )
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Video not found",
@@ -105,11 +135,39 @@ def admin_retry_video_processing(
         video_processing_queue.enqueue(video_id, force=True)
     except HTTPException:
         raise
-    except Exception:
+    except Exception as error:
+        event_recorder.audit(
+            actor=current_user,
+            action="processing.retry.requested",
+            entity_type="video",
+            entity_id=video_id,
+            result="failed",
+            metadata={"reason": type(error).__name__},
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Video processing queue is unavailable",
         )
+
+    event_recorder.audit(
+        actor=current_user,
+        action="processing.retry.requested",
+        entity_type="video",
+        entity_id=video_id,
+        result="success",
+        metadata={"previous_status": video.processing_status.value},
+    )
+    event_recorder.worker_event(
+        event_type="processing.retry.requested",
+        level="info",
+        message=f"Processing retry requested by {current_user.username}",
+        video_id=video_id,
+        job_id=f"video-processing-{video_id}",
+        metadata={
+            "actor_user_id": str(current_user.id),
+            "previous_status": video.processing_status.value,
+        },
+    )
 
     refreshed = read_model.get_video(video_id)
     if refreshed is None:
@@ -124,15 +182,31 @@ def admin_retry_video_processing(
 def admin_delete_video(
     video_id: UUID,
     current_user: User = Depends(require_super_admin),
+    event_recorder: AdminEventRecorder = Depends(get_admin_event_recorder),
     delete_video_use_case: DeleteVideo = Depends(get_delete_video),
 ) -> Response:
     try:
         delete_video_use_case.execute(video_id, current_user)
     except (VideoNotFoundError, VideoPermissionError):
+        event_recorder.audit(
+            actor=current_user,
+            action="video.delete",
+            entity_type="video",
+            entity_id=video_id,
+            result="failed",
+            metadata={"reason": "not_found_or_forbidden"},
+        )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Video not found",
         )
+    event_recorder.audit(
+        actor=current_user,
+        action="video.delete",
+        entity_type="video",
+        entity_id=video_id,
+        result="success",
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

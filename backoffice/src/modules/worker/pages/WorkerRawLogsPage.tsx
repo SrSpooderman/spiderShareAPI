@@ -1,12 +1,14 @@
+import { useQuery } from "@tanstack/react-query";
+
+import { backofficeService } from "@/shared/api/backofficeService";
 import { PageHeader } from "@/shared/ui/PageHeader";
 
-const sampleLogs = [
-  "event=jaimito.worker.redis_ready queue=video-processing",
-  "event=video.job.received video_id=video-3 job_id=video-processing-video-3",
-  "event=jaimito.job.failed video_id=video-3 job_id=video-processing-video-3 error_type=CalledProcessError"
-];
-
 export function WorkerRawLogsPage() {
+  const { data = [] } = useQuery({
+    queryKey: ["worker-raw-logs"],
+    queryFn: backofficeService.getRawLogs
+  });
+
   return (
     <section className="stack">
       <PageHeader
@@ -15,8 +17,8 @@ export function WorkerRawLogsPage() {
         description="Vista secundaria para consola del worker cuando exista fuente de logs configurada."
       />
       <article className="terminal-panel" aria-label="Worker raw logs">
-        {sampleLogs.map((line) => (
-          <code key={line}>{line}</code>
+        {data.map((entry) => (
+          <code key={`${entry.createdAt}-${entry.line}`}>{entry.line}</code>
         ))}
       </article>
     </section>

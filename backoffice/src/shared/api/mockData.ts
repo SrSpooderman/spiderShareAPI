@@ -179,6 +179,24 @@ export const auditEntries: AuditEntry[] = [
   }
 ];
 
+export const rawLogs = [
+  {
+    line: "event=jaimito.worker.redis_ready queue=video-processing",
+    source: "mock",
+    createdAt: "2026-06-11T09:00:00Z"
+  },
+  {
+    line: "event=video.job.received video_id=video-3 job_id=video-processing-video-3",
+    source: "mock",
+    createdAt: "2026-06-11T09:20:00Z"
+  },
+  {
+    line: "event=video.processing.failed video_id=video-3 error_type=CalledProcessError",
+    source: "mock",
+    createdAt: "2026-06-11T09:24:00Z"
+  }
+];
+
 export const dashboard: DashboardSummary = {
   totals: {
     videos: videos.length,

@@ -95,3 +95,9 @@ export type AuditEntry = {
   result: "success" | "failed";
   createdAt: string;
 };
+
+export type RawLogLine = {
+  line: string;
+  source: string;
+  createdAt: string | null;
+};

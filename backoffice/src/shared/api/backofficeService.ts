@@ -4,6 +4,7 @@ import {
   auditEntries,
   dashboard,
   queueJobs,
+  rawLogs,
   users,
   videoDetails,
   videos,
@@ -14,6 +15,7 @@ import {
   BackofficeUser,
   DashboardSummary,
   QueueJob,
+  RawLogLine,
   VideoDetail,
   VideoSummary,
   WorkerEvent
@@ -86,5 +88,13 @@ export const backofficeService = {
       return auditEntries;
     }
     return apiRequest<AuditEntry[]>("/admin/audit");
+  },
+
+  async getRawLogs(): Promise<RawLogLine[]> {
+    if (env.useMocks) {
+      await wait();
+      return rawLogs;
+    }
+    return apiRequest<RawLogLine[]>("/admin/worker/logs");
   }
 };
