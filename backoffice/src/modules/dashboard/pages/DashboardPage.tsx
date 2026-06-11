@@ -5,11 +5,13 @@ import { Link } from "react-router-dom";
 
 import { backofficeService } from "@/shared/api/backofficeService";
 import { Badge } from "@/shared/ui/Badge";
+import { EmptyState } from "@/shared/ui/EmptyState";
 import { PageHeader } from "@/shared/ui/PageHeader";
+import { QueryPanelState } from "@/shared/ui/QueryPanelState";
 import { StatusBadge } from "@/shared/ui/StatusBadge";
 
 export function DashboardPage() {
-  const { data } = useQuery({
+  const { data, isError, isLoading } = useQuery({
     queryKey: ["dashboard"],
     queryFn: backofficeService.getDashboard
   });
@@ -22,6 +24,14 @@ export function DashboardPage() {
         eyebrow="Operacion"
         title="Dashboard"
         description="Resumen rapido del estado de videos, cola y servicios."
+      />
+      <QueryPanelState
+        errorDescription="No se pudo recuperar el resumen operativo del backoffice."
+        errorTitle="Error cargando dashboard"
+        isError={isError}
+        isLoading={isLoading}
+        loadingDescription="Consultando servicios, cola y videos recientes."
+        loadingTitle="Cargando dashboard"
       />
 
       <div className="metric-grid">
@@ -45,6 +55,9 @@ export function DashboardPage() {
                 <span>{service.detail}</span>
               </div>
             ))}
+            {!isLoading && !isError && !data?.services.length ? (
+              <EmptyState title="Sin servicios" description="No hay estados de servicio disponibles." />
+            ) : null}
           </div>
         </article>
 
@@ -89,6 +102,9 @@ export function DashboardPage() {
               ))}
             </tbody>
           </table>
+          {!isLoading && !isError && !data?.recentFailures.length ? (
+            <EmptyState title="Sin fallos recientes" description="No hay videos fallidos en el resumen actual." />
+          ) : null}
         </div>
       </article>
     </section>

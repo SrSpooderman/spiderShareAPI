@@ -104,6 +104,13 @@ class AdminUserResponse(CamelModel):
     video_count: int = Field(alias="videoCount")
 
 
+class AdminUserDetailResponse(AdminUserResponse):
+    last_login_at: datetime | None = Field(alias="lastLoginAt")
+    created_at: datetime = Field(alias="createdAt")
+    updated_at: datetime = Field(alias="updatedAt")
+    recent_videos: list[AdminVideoSummaryResponse] = Field(alias="recentVideos")
+
+
 class AdminAuditEntryResponse(CamelModel):
     id: str
     actor_username: str = Field(alias="actorUsername")

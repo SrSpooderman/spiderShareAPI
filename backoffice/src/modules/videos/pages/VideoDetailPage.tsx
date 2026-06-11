@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { RotateCcw } from "lucide-react";
-import { useParams } from "react-router-dom";
+import { RotateCcw, Trash2 } from "lucide-react";
+import { useNavigate, useParams } from "react-router-dom";
 
+import { useAuth } from "@/modules/auth/AuthContext";
 import { backofficeService } from "@/shared/api/backofficeService";
 import { Badge } from "@/shared/ui/Badge";
 import { EmptyState } from "@/shared/ui/EmptyState";
@@ -10,25 +11,46 @@ import { StatusBadge } from "@/shared/ui/StatusBadge";
 
 export function VideoDetailPage() {
   const { videoId = "" } = useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { data: video } = useQuery({
+  const { isSuperAdmin } = useAuth();
+  const { data: video, isError, isLoading } = useQuery({
     queryKey: ["video", videoId],
     queryFn: () => backofficeService.getVideo(videoId),
     enabled: Boolean(videoId)
   });
   const { data: events = [] } = useQuery({
-    queryKey: ["worker-events"],
-    queryFn: backofficeService.getWorkerEvents
+    queryKey: ["worker-events", videoId],
+    queryFn: () => backofficeService.getWorkerEvents({ videoId, limit: 100 }),
+    enabled: Boolean(videoId)
   });
   const retry = useMutation({
     mutationFn: () => backofficeService.retryVideo(videoId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["video", videoId] })
   });
+  const deleteVideo = useMutation({
+    mutationFn: () => backofficeService.deleteVideo(videoId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["videos"] });
+      navigate("/videos", { replace: true });
+    }
+  });
 
   const videoEvents = events.filter((event) => event.videoId === videoId);
 
   if (!video) {
-    return <EmptyState title="Cargando video" description="Recuperando detalle operativo." />;
+    return (
+      <EmptyState
+        title={isError ? "No se pudo cargar el video" : "Cargando video"}
+        description={
+          isError
+            ? "El video no existe o no tienes permisos para consultar este detalle."
+            : isLoading
+              ? "Recuperando detalle operativo."
+              : "No hay detalle disponible para este video."
+        }
+      />
+    );
   }
 
   return (
@@ -38,12 +60,34 @@ export function VideoDetailPage() {
         title={video.title}
         description={`Owner: ${video.ownerUsername}`}
         actions={
-          video.processingStatus !== "ready" ? (
-            <button className="button primary" onClick={() => retry.mutate()}>
-              <RotateCcw size={16} />
-              Reintentar
-            </button>
-          ) : null
+          <>
+            {isSuperAdmin && video.processingStatus !== "ready" ? (
+              <button
+                className="button primary"
+                disabled={retry.isPending}
+                onClick={() => retry.mutate()}
+                type="button"
+              >
+                <RotateCcw size={16} />
+                {retry.isPending ? "Reintentando..." : "Reintentar"}
+              </button>
+            ) : null}
+            {isSuperAdmin ? (
+              <button
+                className="button danger"
+                disabled={deleteVideo.isPending}
+                onClick={() => {
+                  if (window.confirm("Borrar este video de forma permanente?")) {
+                    deleteVideo.mutate();
+                  }
+                }}
+                type="button"
+              >
+                <Trash2 size={16} />
+                {deleteVideo.isPending ? "Borrando..." : "Borrar"}
+              </button>
+            ) : null}
+          </>
         }
       />
 

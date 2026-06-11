@@ -13,6 +13,7 @@ import { NavLink, Outlet } from "react-router-dom";
 
 import { useAuth } from "@/modules/auth/AuthContext";
 import { env } from "@/shared/config/env";
+import { Badge } from "@/shared/ui/Badge";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -25,7 +26,7 @@ const navItems = [
 ];
 
 export function AppShell() {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
 
   return (
     <div className="app-shell">
@@ -61,6 +62,7 @@ export function AppShell() {
           <div className="topbar-status">
             <span className="status-dot ok" />
             <span>{env.apiBaseUrl}</span>
+            {user ? <Badge tone={user.role === "super_admin" ? "blue" : "neutral"}>{user.username}</Badge> : null}
             <button className="button ghost" type="button" onClick={logout} title="Cerrar sesion">
               <LogOut size={16} />
               <span>Salir</span>

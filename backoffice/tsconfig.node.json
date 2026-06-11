@@ -4,8 +4,7 @@
     "noEmit": true,
     "tsBuildInfoFile": "./node_modules/.cache/tsconfig.node.tsbuildinfo",
     "skipLibCheck": true,
-    "module": "ESNext",
-    "moduleResolution": "Node",
+    "module": "NodeNext",
     "allowSyntheticDefaultImports": true
   },
   "include": ["vite.config.ts"]

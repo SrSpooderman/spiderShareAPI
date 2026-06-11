@@ -5,6 +5,7 @@ import { AuditPage } from "@/modules/audit/pages/AuditPage";
 import { DashboardPage } from "@/modules/dashboard/pages/DashboardPage";
 import { LoginPage } from "@/modules/auth/pages/LoginPage";
 import { RequireAuth } from "@/modules/auth/RequireAuth";
+import { UserDetailPage } from "@/modules/users/pages/UserDetailPage";
 import { UserListPage } from "@/modules/users/pages/UserListPage";
 import { VideoDetailPage } from "@/modules/videos/pages/VideoDetailPage";
 import { VideoListPage } from "@/modules/videos/pages/VideoListPage";
@@ -33,6 +34,7 @@ export const router = createBrowserRouter([
       { path: "worker/events", element: <WorkerEventsPage /> },
       { path: "worker/logs", element: <WorkerRawLogsPage /> },
       { path: "users", element: <UserListPage /> },
+      { path: "users/:userId", element: <UserDetailPage /> },
       { path: "audit", element: <AuditPage /> }
     ]
   }

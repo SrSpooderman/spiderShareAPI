@@ -45,6 +45,15 @@ export type VideoSummary = {
   latestProcessingError: ProcessingError | null;
 };
 
+export type VideoListFilters = {
+  status?: ProcessingStatus;
+  title?: string;
+  owner?: string;
+  visibility?: "public" | "registered";
+  limit?: number;
+  offset?: number;
+};
+
 export type VideoDetail = VideoSummary & {
   originalFilename: string;
   width: number | null;
@@ -87,6 +96,19 @@ export type BackofficeUser = {
   videoCount: number;
 };
 
+export type UserListFilters = {
+  username?: string;
+  role?: UserRole;
+  isActive?: boolean;
+};
+
+export type BackofficeUserDetail = BackofficeUser & {
+  lastLoginAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  recentVideos: VideoSummary[];
+};
+
 export type AuditEntry = {
   id: string;
   actorUsername: string;
@@ -94,6 +116,17 @@ export type AuditEntry = {
   entity: string;
   result: "success" | "failed";
   createdAt: string;
+};
+
+export type OffsetPagination = {
+  limit?: number;
+  offset?: number;
+};
+
+export type WorkerEventFilters = OffsetPagination & {
+  level?: WorkerEvent["level"];
+  videoId?: string;
+  jobId?: string;
 };
 
 export type RawLogLine = {

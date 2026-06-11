@@ -7,6 +7,7 @@ from app.modules.admin.entrypoints.schemas import (
     AdminDashboardResponse,
     AdminDashboardTotalsResponse,
     AdminServiceStatusResponse,
+    AdminUserDetailResponse,
     AdminUserResponse,
     AdminVideoDetailResponse,
     AdminVideoSummaryResponse,
@@ -90,7 +91,7 @@ class FakeAdminReadModel:
             )
         ]
 
-    def users(self):
+    def users(self, **_kwargs):
         return [
             AdminUserResponse(
                 id=self.owner_id,
@@ -102,10 +103,19 @@ class FakeAdminReadModel:
             )
         ]
 
-    def audit_entries(self):
+    def get_user(self, _user_id):
+        return AdminUserDetailResponse(
+            **self.users()[0].model_dump(),
+            last_login_at=None,
+            created_at=datetime(2026, 6, 11, tzinfo=timezone.utc),
+            updated_at=datetime(2026, 6, 11, tzinfo=timezone.utc),
+            recent_videos=[self.video],
+        )
+
+    def audit_entries(self, **_kwargs):
         return []
 
-    def raw_logs(self):
+    def raw_logs(self, **_kwargs):
         return []
 
 
@@ -162,7 +172,8 @@ def test_admin_dashboard_and_videos_return_backoffice_contract(
     videos_response = client.get("/admin/videos")
     detail_response = client.get(f"/admin/videos/{read_model.video_id}")
     events_response = client.get("/admin/worker/events")
-    users_response = client.get("/admin/users")
+    users_response = client.get("/admin/users", params={"username": "ali"})
+    user_detail_response = client.get(f"/admin/users/{read_model.owner_id}")
 
     assert dashboard_response.status_code == 200
     assert dashboard_response.json()["totals"]["queuedJobs"] == 1
@@ -175,6 +186,8 @@ def test_admin_dashboard_and_videos_return_backoffice_contract(
     assert events_response.json()[0]["workerName"] == "jaimito_worker"
     assert users_response.status_code == 200
     assert users_response.json()[0]["videoCount"] == 1
+    assert user_detail_response.status_code == 200
+    assert user_detail_response.json()["recentVideos"][0]["title"] == "Boss clip"
 
 
 @pytest.mark.http

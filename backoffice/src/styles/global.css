@@ -259,6 +259,7 @@ th {
 
 .toolbar {
   justify-content: flex-start;
+  flex-wrap: wrap;
 }
 
 .toolbar input,
@@ -272,6 +273,22 @@ th {
 
 .toolbar input {
   width: min(360px, 100%);
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 18px;
+  border-top: 1px solid #e6ebf0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.pagination div {
+  display: flex;
+  gap: 8px;
 }
 
 .table-shell {
@@ -337,6 +354,12 @@ th {
 .button.ghost {
   min-height: 32px;
   padding: 6px 10px;
+}
+
+.button.danger {
+  border-color: #dc2626;
+  background: #dc2626;
+  color: #ffffff;
 }
 
 .status-dot {

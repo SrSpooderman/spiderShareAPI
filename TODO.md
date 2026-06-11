@@ -4,47 +4,65 @@
 - Backoffice sencillo:
   - Objetivo inicial: crear un panel interno para operar videos, cola/worker y usuarios sin depender de consola, Docker logs o consultas manuales.
   - Acceso y permisos:
-    - Pendiente: definir rutas bajo prefijo administrativo, por ejemplo `/admin/...`.
-    - Pendiente: proteger todo el backoffice con JWT.
-    - Pendiente: permitir lectura operativa a `admin` y `super_admin`.
-    - Pendiente: reservar acciones sensibles para `super_admin`, como reintentar procesado, borrar videos, limpiar jobs o cambiar roles.
+    - Hecho: rutas administrativas bajo prefijo `/admin/...`.
+    - Hecho: endpoints admin protegidos con JWT bearer.
+    - Hecho: backoffice React protegido con login real contra `/auth/login`.
+    - Hecho: el cliente del backoffice guarda el token y lo envia como `Authorization: Bearer <token>`.
+    - Hecho: lectura operativa reservada a `admin` y `super_admin`.
+    - Hecho: reintento de procesado reservado a `super_admin`.
+    - Hecho: borrado de videos desde backoffice solo para `super_admin`.
+    - Pendiente: conectar futuras acciones sensibles de usuario o limpieza de cola solo para `super_admin`.
   - Dashboard operativo:
-    - Pendiente: endpoint resumen con conteos de videos por estado: `pending`, `processing`, `ready`, `failed`.
-    - Pendiente: mostrar ultimos videos subidos y ultimos videos fallidos.
-    - Pendiente: mostrar estado basico de dependencias: API, MySQL, Redis y cola RQ.
-    - Pendiente: mostrar numero de jobs pendientes, jobs activos y jobs fallidos si Redis/RQ lo permite.
+    - Hecho: endpoint resumen con conteos de videos por estado: `pending`, `processing`, `ready`, `failed`.
+    - Hecho: pantalla de dashboard en el backoffice.
+    - Hecho: mostrar ultimos videos subidos y ultimos videos fallidos.
+    - Hecho: mostrar estado basico de dependencias: API, MySQL, Redis y cola RQ.
+    - Hecho: mostrar numero de jobs pendientes, jobs activos y jobs fallidos si Redis/RQ lo permite.
   - Gestion de videos:
-    - Pendiente: endpoint/listado admin de videos con filtros por estado, owner, titulo, fecha y visibilidad.
-    - Pendiente: detalle admin de video con metadata tecnica, propietario, variantes, thumbnail, estado y ultimo error de procesado.
-    - Pendiente: reutilizar el reintento de procesado para videos no completos desde el backoffice.
-    - Pendiente: permitir borrar videos desde backoffice solo a `super_admin`.
-    - Pendiente: documentar que el backoffice debe usar paginacion y no cargar todo el catalogo de golpe.
+    - Hecho: endpoint/listado admin de videos.
+    - Hecho: detalle admin de video con metadata tecnica, propietario, variantes, thumbnail, estado y ultimo error de procesado.
+    - Hecho: reutilizar el reintento de procesado para videos no completos desde el backoffice.
+    - Hecho: tabla/listado de videos en el backoffice con estado visible y acceso al detalle.
+    - Hecho: detalle de video en el backoffice con timeline operativo y boton de reintento.
+    - Hecho: filtros por estado, owner, titulo y visibilidad en el listado de videos.
+    - Hecho: paginacion por `limit/offset` en el listado de videos del backoffice.
+    - Hecho: permitir borrar videos desde backoffice solo a `super_admin`.
   - Worker, cola y logs:
     - Hecho: tabla `worker_events` para eventos operativos.
     - Hecho: guardar eventos relevantes del worker: arranque, Redis listo, job recibido, procesado terminado, fallo, apagado y reintento manual.
     - Hecho: cada evento guarda `event_type`, `level`, `message`, `video_id`, `job_id`, `worker_name`, metadata JSON y `created_at`.
     - Hecho: endpoint admin para consultar eventos del worker con filtros por `video_id`, `job_id` y nivel.
-    - Pendiente: vista tipo timeline en el detalle del video usando eventos del worker y errores de procesado.
+    - Hecho: vista tipo timeline en el detalle del video usando eventos del worker y errores de procesado.
     - Hecho: endpoint y pantalla de logs crudos generados desde `worker_events`.
+    - Hecho: pantalla de cola/jobs del worker.
+    - Hecho: paginacion y busqueda en eventos/logs del worker.
   - Usuarios:
-    - Pendiente: listado admin de usuarios con filtros por username, rol y estado.
-    - Pendiente: detalle de usuario con sus videos recientes y conteos basicos.
+    - Hecho: endpoint y pantalla de listado admin de usuarios con conteos basicos.
+    - Hecho: filtros por username, rol y estado.
+    - Hecho: detalle de usuario con sus videos recientes y conteos basicos.
     - Pendiente: acciones de activar/desactivar usuario y cambio de rol respetando las reglas actuales.
   - Auditoria de acciones administrativas:
     - Hecho: tabla `admin_audit_entries` para saber quien hizo reintentos, borrados, cambios de usuario o limpiezas.
     - Hecho: guardar `actor_user_id`, accion, entidad afectada, metadata JSON, resultado y timestamp.
+    - Hecho: endpoint y pantalla de auditoria administrativa.
     - Pendiente: ampliar auditoria a cambios de usuario cuando esas acciones se conecten desde el backoffice.
   - Frontend del backoffice:
-    - Pendiente: decidir si el backoffice vive dentro de este repo o como frontend separado.
-    - Pendiente: pantalla de login o reutilizacion del login actual con token JWT.
-    - Pendiente: layout sencillo con secciones: Dashboard, Videos, Worker/Logs, Usuarios.
-    - Pendiente: tabla de videos con filtros, estado visible y acciones disponibles segun rol.
-    - Pendiente: detalle de video con timeline de worker, ultimo error y boton de reintento para `super_admin`.
-    - Pendiente: vista de logs/eventos del worker con busqueda y paginacion.
+    - Hecho: backoffice vive en carpeta separada `backoffice/` dentro del repo.
+    - Hecho: stack React + Vite + TypeScript.
+    - Hecho: estructura modular por app, layouts, modules, shared api, shared types y shared ui.
+    - Hecho: pantalla de login real con JWT.
+    - Hecho: rutas internas protegidas.
+    - Hecho: layout sencillo con secciones: Dashboard, Videos, Cola, Eventos, Logs, Usuarios y Auditoria.
+    - Hecho: cliente API real sin modo de datos falsos ni bandera para activarlo.
+    - Hecho: Docker levanta el backoffice junto al resto del stack.
+    - Hecho: configuracion TypeScript limpia sin opciones deprecadas.
+    - Hecho: mejorar estados de error/vacio/cargando por pantalla con mensajes mas especificos.
+    - Hecho: aplicar paginacion real en tablas con contratos `limit/offset`.
   - Validacion y despliegue:
-    - Pendiente: tests HTTP de permisos del backoffice: anonimo bloqueado, `user` bloqueado, `admin` lectura, `super_admin` acciones sensibles.
-    - Pendiente: tests de endpoints de dashboard/listados usando fakes.
-    - Pendiente: actualizar README con rutas admin, permisos y flujo operativo.
+    - Hecho: tests HTTP de permisos del backoffice: anonimo bloqueado, `user` bloqueado, `admin` lectura, `super_admin` acciones sensibles.
+    - Hecho: tests de endpoints de dashboard/listados usando fakes.
+    - Hecho: README actualizado con rutas admin, permisos y flujo operativo.
+    - Hecho: `npm run build` del backoffice compila correctamente.
     - Pendiente: revisar Docker/Portainer para exponer el frontend o servirlo detras del proxy sin publicar herramientas internas por error.
 - Contador de visualizaciones.
 - Asociacion opcional con Steam/juegos.

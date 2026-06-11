@@ -2,10 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 
 import { backofficeService } from "@/shared/api/backofficeService";
 import { Badge } from "@/shared/ui/Badge";
+import { EmptyState } from "@/shared/ui/EmptyState";
 import { PageHeader } from "@/shared/ui/PageHeader";
+import { QueryPanelState } from "@/shared/ui/QueryPanelState";
 
 export function WorkerQueuePage() {
-  const { data = [] } = useQuery({
+  const { data = [], isError, isLoading } = useQuery({
     queryKey: ["queue-jobs"],
     queryFn: backofficeService.getQueueJobs
   });
@@ -18,6 +20,14 @@ export function WorkerQueuePage() {
         description="Vista operativa de jobs pendientes, activos y fallidos."
       />
       <article className="panel">
+        <QueryPanelState
+          errorDescription="No se pudo recuperar el estado de la cola RQ."
+          errorTitle="Error cargando cola"
+          isError={isError}
+          isLoading={isLoading}
+          loadingDescription="Consultando jobs pendientes, activos y fallidos."
+          loadingTitle="Cargando cola"
+        />
         <div className="table-shell">
           <table>
             <thead>
@@ -41,6 +51,9 @@ export function WorkerQueuePage() {
               ))}
             </tbody>
           </table>
+          {!isLoading && !isError && !data.length ? (
+            <EmptyState title="Cola vacia" description="No hay jobs visibles en este momento." />
+          ) : null}
         </div>
       </article>
     </section>

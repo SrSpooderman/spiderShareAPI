@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -10,6 +10,7 @@ from app.modules.admin.entrypoints.schemas import (
     AdminDashboardTotalsResponse,
     AdminProcessingErrorResponse,
     AdminRawLogLineResponse,
+    AdminUserDetailResponse,
     AdminServiceStatusResponse,
     AdminUserResponse,
     AdminVideoDetailResponse,
@@ -41,6 +42,8 @@ class AdminReadModel:
         status: VideoProcessingStatus | None = None,
         title: str | None = None,
         owner_id: UUID | None = None,
+        owner: str | None = None,
+        visibility: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[AdminVideoSummaryResponse]:
@@ -60,13 +63,32 @@ class AdminReadModel:
     ) -> list[AdminWorkerEventResponse]:
         raise NotImplementedError
 
-    def users(self) -> list[AdminUserResponse]:
+    def users(
+        self,
+        *,
+        username: str | None = None,
+        role: str | None = None,
+        is_active: bool | None = None,
+    ) -> list[AdminUserResponse]:
         raise NotImplementedError
 
-    def audit_entries(self) -> list[AdminAuditEntryResponse]:
+    def get_user(self, user_id: UUID) -> AdminUserDetailResponse | None:
         raise NotImplementedError
 
-    def raw_logs(self) -> list[AdminRawLogLineResponse]:
+    def audit_entries(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[AdminAuditEntryResponse]:
+        raise NotImplementedError
+
+    def raw_logs(
+        self,
+        *,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> list[AdminRawLogLineResponse]:
         raise NotImplementedError
 
 
@@ -118,6 +140,8 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
         status: VideoProcessingStatus | None = None,
         title: str | None = None,
         owner_id: UUID | None = None,
+        owner: str | None = None,
+        visibility: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[AdminVideoSummaryResponse]:
@@ -138,6 +162,12 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
             conditions.append(VideoModel.title.ilike(f"%{title}%"))
         if owner_id is not None:
             conditions.append(VideoModel.owner_id == str(owner_id))
+        if owner:
+            conditions.append(VideoModel.owner.has(UserModel.username.ilike(f"%{owner}%")))
+        if visibility == "public":
+            conditions.append(VideoModel.is_registered_only.is_(False))
+        if visibility == "registered":
+            conditions.append(VideoModel.is_registered_only.is_(True))
         if conditions:
             statement = statement.where(*conditions)
 
@@ -221,7 +251,13 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
             for model in self.session.scalars(statement).all()
         ]
 
-    def users(self) -> list[AdminUserResponse]:
+    def users(
+        self,
+        *,
+        username: str | None = None,
+        role: str | None = None,
+        is_active: bool | None = None,
+    ) -> list[AdminUserResponse]:
         video_counts = {
             owner_id: count
             for owner_id, count in self.session.execute(
@@ -231,23 +267,49 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
             )
         }
         statement = select(UserModel).order_by(UserModel.created_at.desc())
+        conditions = []
+        if username:
+            conditions.append(UserModel.username.ilike(f"%{username}%"))
+        if role:
+            conditions.append(UserModel.role == role)
+        if is_active is not None:
+            conditions.append(UserModel.is_active.is_(is_active))
+        if conditions:
+            statement = statement.where(*conditions)
         return [
-            AdminUserResponse(
-                id=UUID(model.id),
-                username=model.username,
-                display_name=model.display_name,
-                role=model.role,
-                is_active=model.is_active,
-                video_count=video_counts.get(model.id, 0),
-            )
+            self._user_summary(model, video_counts.get(model.id, 0))
             for model in self.session.scalars(statement).all()
         ]
 
-    def audit_entries(self) -> list[AdminAuditEntryResponse]:
+    def get_user(self, user_id: UUID) -> AdminUserDetailResponse | None:
+        model = self.session.scalar(select(UserModel).where(UserModel.id == str(user_id)))
+        if model is None:
+            return None
+
+        video_count = self.session.scalar(
+            select(func.count(VideoModel.id)).where(VideoModel.owner_id == model.id),
+        )
+        recent_videos = self.list_videos(owner_id=user_id, limit=5)
+        summary = self._user_summary(model, int(video_count or 0))
+        return AdminUserDetailResponse(
+            **summary.model_dump(),
+            last_login_at=model.last_login_at,
+            created_at=model.created_at,
+            updated_at=model.updated_at,
+            recent_videos=recent_videos,
+        )
+
+    def audit_entries(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[AdminAuditEntryResponse]:
         statement = (
             select(AdminAuditEntryModel)
             .order_by(AdminAuditEntryModel.created_at.desc())
-            .limit(100)
+            .limit(limit)
+            .offset(offset)
         )
         return [
             AdminAuditEntryResponse(
@@ -261,11 +323,17 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
             for model in self.session.scalars(statement).all()
         ]
 
-    def raw_logs(self) -> list[AdminRawLogLineResponse]:
+    def raw_logs(
+        self,
+        *,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> list[AdminRawLogLineResponse]:
         statement = (
             select(WorkerEventModel)
             .order_by(WorkerEventModel.created_at.desc())
-            .limit(200)
+            .limit(limit)
+            .offset(offset)
         )
         return [
             AdminRawLogLineResponse(
@@ -278,13 +346,17 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
                 created_at=model.created_at,
             )
             for model in self.session.scalars(statement).all()
-        ] or [
-            AdminRawLogLineResponse(
-                line="No worker events stored yet.",
-                source="worker_events",
-                created_at=datetime.now(timezone.utc),
-            )
         ]
+
+    def _user_summary(self, model: UserModel, video_count: int) -> AdminUserResponse:
+        return AdminUserResponse(
+            id=UUID(model.id),
+            username=model.username,
+            display_name=model.display_name,
+            role=model.role,
+            is_active=model.is_active,
+            video_count=video_count,
+        )
 
     def _video_status_counts(self) -> dict[str, int]:
         counts = {

@@ -7,6 +7,7 @@ from app.modules.admin.entrypoints.schemas import (
     AdminDashboardResponse,
     AdminQueueJobResponse,
     AdminRawLogLineResponse,
+    AdminUserDetailResponse,
     AdminUserResponse,
     AdminVideoDetailResponse,
     AdminVideoSummaryResponse,
@@ -50,6 +51,8 @@ def admin_list_videos(
     status_filter: VideoProcessingStatus | None = Query(default=None, alias="status"),
     title: str | None = Query(default=None),
     owner_id: UUID | None = Query(default=None),
+    owner: str | None = Query(default=None),
+    visibility: str | None = Query(default=None, pattern="^(public|registered)$"),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     _current_user: User = Depends(require_admin),
@@ -59,6 +62,8 @@ def admin_list_videos(
         status=status_filter,
         title=title,
         owner_id=owner_id,
+        owner=owner,
+        visibility=visibility,
         limit=limit,
         offset=offset,
     )
@@ -231,10 +236,12 @@ def admin_worker_events(
 
 @router.get("/worker/logs", response_model=list[AdminRawLogLineResponse])
 def admin_worker_logs(
+    limit: int = Query(default=200, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     _current_user: User = Depends(require_admin),
     read_model: AdminReadModel = Depends(get_admin_read_model),
 ) -> list[AdminRawLogLineResponse]:
-    return read_model.raw_logs()
+    return read_model.raw_logs(limit=limit, offset=offset)
 
 
 @router.get("/queue/jobs", response_model=list[AdminQueueJobResponse])
@@ -247,15 +254,35 @@ def admin_queue_jobs(
 
 @router.get("/users", response_model=list[AdminUserResponse])
 def admin_users(
+    username: str | None = Query(default=None),
+    role: str | None = Query(default=None, pattern="^(user|admin|super_admin)$"),
+    is_active: bool | None = Query(default=None),
     _current_user: User = Depends(require_admin),
     read_model: AdminReadModel = Depends(get_admin_read_model),
 ) -> list[AdminUserResponse]:
-    return read_model.users()
+    return read_model.users(username=username, role=role, is_active=is_active)
+
+
+@router.get("/users/{user_id}", response_model=AdminUserDetailResponse)
+def admin_get_user(
+    user_id: UUID,
+    _current_user: User = Depends(require_admin),
+    read_model: AdminReadModel = Depends(get_admin_read_model),
+) -> AdminUserDetailResponse:
+    user = read_model.get_user(user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+    return user
 
 
 @router.get("/audit", response_model=list[AdminAuditEntryResponse])
 def admin_audit(
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     _current_user: User = Depends(require_admin),
     read_model: AdminReadModel = Depends(get_admin_read_model),
 ) -> list[AdminAuditEntryResponse]:
-    return read_model.audit_entries()
+    return read_model.audit_entries(limit=limit, offset=offset)

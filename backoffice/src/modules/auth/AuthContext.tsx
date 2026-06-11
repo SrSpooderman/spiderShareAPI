@@ -1,16 +1,33 @@
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
 
 import { apiRequest } from "@/shared/api/httpClient";
-import { AUTH_TOKEN_CHANGED, clearStoredToken, getStoredToken, storeToken } from "@/modules/auth/authStorage";
+import {
+  AUTH_TOKEN_CHANGED,
+  clearStoredToken,
+  getStoredToken,
+  getStoredUser,
+  storeToken,
+  storeUser
+} from "@/modules/auth/authStorage";
+import { UserRole } from "@/shared/types/backoffice";
+
+type AuthUser = {
+  id: string;
+  username: string;
+  role: UserRole;
+};
 
 type LoginResponse = {
   access_token: string;
   token_type: string;
+  user: AuthUser;
 };
 
 type AuthContextValue = {
   token: string | null;
+  user: AuthUser | null;
   isAuthenticated: boolean;
+  isSuperAdmin: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
 };
@@ -23,9 +40,13 @@ type AuthProviderProps = {
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const [token, setToken] = useState<string | null>(() => getStoredToken());
+  const [user, setUser] = useState<AuthUser | null>(() => getStoredUser<AuthUser>());
 
   useEffect(() => {
-    const syncToken = () => setToken(getStoredToken());
+    const syncToken = () => {
+      setToken(getStoredToken());
+      setUser(getStoredUser<AuthUser>());
+    };
 
     window.addEventListener(AUTH_TOKEN_CHANGED, syncToken);
     window.addEventListener("storage", syncToken);
@@ -39,7 +60,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const value = useMemo<AuthContextValue>(
     () => ({
       token,
+      user,
       isAuthenticated: Boolean(token),
+      isSuperAdmin: user?.role === "super_admin",
       async login(username, password) {
         const response = await apiRequest<LoginResponse>("/auth/login", {
           method: "POST",
@@ -47,14 +70,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
           skipAuth: true
         });
         storeToken(response.access_token);
+        storeUser(response.user);
         setToken(response.access_token);
+        setUser(response.user);
       },
       logout() {
         clearStoredToken();
         setToken(null);
+        setUser(null);
       }
     }),
-    [token]
+    [token, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
