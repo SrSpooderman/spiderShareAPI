@@ -18,7 +18,11 @@ from fastapi import (
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, JSONResponse
 
-from app.modules.auth.wiring import get_current_user, get_optional_current_user
+from app.modules.auth.wiring import (
+    get_current_user,
+    get_optional_current_user,
+    require_super_admin,
+)
 from app.modules.users.domain.user import User
 from app.modules.videos.application.delete_video import DeleteVideo
 from app.modules.videos.application.errors import (
@@ -624,6 +628,68 @@ def delete_video(
         raise _map_video_error(error)
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/videos/{video_id}/processing/retry", response_model=VideoDetailResponse)
+def retry_video_processing(
+    video_id: UUID,
+    current_user: User = Depends(require_super_admin),
+    video_repository: VideoRepository = Depends(get_video_repository),
+    video_storage: VideoStorage = Depends(get_video_storage),
+    video_processing_queue: VideoProcessingQueue = Depends(get_video_processing_queue),
+) -> VideoDetailResponse:
+    video = video_repository.get_by_id(video_id)
+    if video is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found",
+        )
+    if video.processing_status == VideoProcessingStatus.READY:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Video processing is already complete",
+        )
+
+    try:
+        video_storage.delete_processing_outputs(video_id)
+        reset_video = video_repository.reset_processing(video_id)
+        if reset_video is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Video not found",
+            )
+        video_processing_queue.enqueue(video_id, force=True)
+    except HTTPException:
+        raise
+    except Exception as error:
+        logger.exception(
+            "Failed to retry video processing video_id=%s requested_by=%s "
+            "queue_backend=%s error_type=%s",
+            video_id,
+            current_user.id,
+            type(video_processing_queue).__name__,
+            type(error).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Video processing queue is unavailable",
+        )
+
+    logger.info(
+        "Video processing retry enqueued video_id=%s requested_by=%s "
+        "previous_status=%s new_status=%s queue_backend=%s",
+        video_id,
+        current_user.id,
+        video.processing_status.value,
+        reset_video.processing_status.value,
+        type(video_processing_queue).__name__,
+    )
+    return VideoDetailResponse.from_domain(
+        reset_video,
+        current_user=current_user,
+        is_favorite=False,
+        reaction_counts={},
+    )
 
 
 @router.post("/videos/{video_id}/favorite", status_code=status.HTTP_204_NO_CONTENT)

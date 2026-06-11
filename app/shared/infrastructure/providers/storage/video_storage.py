@@ -55,7 +55,13 @@ class LocalVideoStorage(VideoStorage):
         shutil.rmtree(self.root_path / "originals" / str(video_id), ignore_errors=True)
 
     def delete_video_files(self, video_id: UUID) -> None:
-        for folder in ("originals", "variants", "thumbnails"):
+        for folder in ("originals", "variants", "thumbnails", "processing_tmp"):
+            path = self.root_path / folder / str(video_id)
+            if path.exists():
+                shutil.rmtree(path)
+
+    def delete_processing_outputs(self, video_id: UUID) -> None:
+        for folder in ("variants", "thumbnails", "processing_tmp"):
             path = self.root_path / folder / str(video_id)
             if path.exists():
                 shutil.rmtree(path)

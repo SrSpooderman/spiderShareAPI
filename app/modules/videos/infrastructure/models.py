@@ -82,7 +82,47 @@ class VideoModel(Base):
         back_populates="video",
         cascade="all, delete-orphan",
     )
+    processing_errors: Mapped[list["VideoProcessingErrorModel"]] = relationship(
+        back_populates="video",
+        cascade="all, delete-orphan",
+        order_by="VideoProcessingErrorModel.attempt",
+    )
     owner: Mapped[UserModel] = relationship()
+
+
+class VideoProcessingErrorModel(Base):
+    __tablename__ = "video_processing_errors"
+    __table_args__ = (
+        UniqueConstraint(
+            "video_id",
+            "attempt",
+            name="uq_video_processing_errors_video_attempt",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid4()),
+    )
+    video_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("videos.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False)
+    error_type: Mapped[str] = mapped_column(String(255), nullable=False)
+    error_message: Mapped[str] = mapped_column(Text, nullable=False)
+    job_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    duration_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        server_default=func.current_timestamp(),
+    )
+
+    video: Mapped[VideoModel] = relationship(back_populates="processing_errors")
 
 
 class VideoVariantModel(Base):

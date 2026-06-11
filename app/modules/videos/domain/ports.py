@@ -60,7 +60,19 @@ class VideoRepository(ABC):
         pass
 
     @abstractmethod
-    def mark_failed(self, video_id: UUID) -> Video | None:
+    def mark_failed(
+        self,
+        video_id: UUID,
+        *,
+        error_type: str,
+        error_message: str,
+        job_id: str | None,
+        duration_ms: float | None,
+    ) -> Video | None:
+        pass
+
+    @abstractmethod
+    def reset_processing(self, video_id: UUID) -> Video | None:
         pass
 
     @abstractmethod
@@ -154,6 +166,10 @@ class VideoStorage(ABC):
         pass
 
     @abstractmethod
+    def delete_processing_outputs(self, video_id: UUID) -> None:
+        pass
+
+    @abstractmethod
     def get_original_path(self, video_id: UUID) -> Path | None:
         pass
 
@@ -174,5 +190,5 @@ class VideoTranscoder(ABC):
 
 class VideoProcessingQueue(ABC):
     @abstractmethod
-    def enqueue(self, video_id: UUID) -> None:
+    def enqueue(self, video_id: UUID, *, force: bool = False) -> None:
         pass

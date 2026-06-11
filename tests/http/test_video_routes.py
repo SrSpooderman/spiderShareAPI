@@ -486,6 +486,82 @@ def test_delete_video_blocks_admin_but_allows_super_admin(
 
 
 @pytest.mark.http
+def test_retry_video_processing_requires_super_admin_and_resets_outputs(
+    app,
+    client,
+    user_factory,
+    video_factory,
+    video_repository,
+    video_storage,
+    video_processing_queue,
+) -> None:
+    owner = user_factory()
+    admin = user_factory(role="admin")
+    super_admin = user_factory(role="super_admin")
+    video = video_repository.add(
+        video_factory(
+            owner_id=owner.id,
+            processing_status=VideoProcessingStatus.PROCESSING,
+            width=1920,
+            height=1080,
+            duration_seconds=12.5,
+            thumbnail_path="thumbnails/video/thumbnail.jpg",
+            variants=[make_video_variant()],
+        )
+    )
+    app.dependency_overrides[get_video_repository] = lambda: video_repository
+    app.dependency_overrides[get_video_storage] = lambda: video_storage
+    app.dependency_overrides[get_current_user] = lambda: admin
+
+    response = client.post(f"/videos/{video.id}/processing/retry")
+
+    assert response.status_code == 403
+    assert video_processing_queue.enqueued == []
+
+    app.dependency_overrides[get_current_user] = lambda: super_admin
+    response = client.post(f"/videos/{video.id}/processing/retry")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["processing_status"] == "pending"
+    assert body["width"] is None
+    assert body["height"] is None
+    assert body["duration_seconds"] is None
+    assert body["thumbnail_path"] is None
+    assert body["variants"] == []
+    assert video_storage.deleted_processing_outputs == [video.id]
+    assert video_repository.reset == [video.id]
+    assert video_processing_queue.enqueued == [video.id]
+    assert video_processing_queue.force_flags == [True]
+
+
+@pytest.mark.http
+def test_retry_video_processing_rejects_ready_video(
+    app,
+    client,
+    user_factory,
+    video_factory,
+    video_repository,
+    video_storage,
+    video_processing_queue,
+) -> None:
+    super_admin = user_factory(role="super_admin")
+    video = video_repository.add(
+        video_factory(processing_status=VideoProcessingStatus.READY)
+    )
+    app.dependency_overrides[get_video_repository] = lambda: video_repository
+    app.dependency_overrides[get_video_storage] = lambda: video_storage
+    app.dependency_overrides[get_current_user] = lambda: super_admin
+
+    response = client.post(f"/videos/{video.id}/processing/retry")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Video processing is already complete"
+    assert video_storage.deleted_processing_outputs == []
+    assert video_processing_queue.enqueued == []
+
+
+@pytest.mark.http
 def test_favorite_routes_and_my_favorites(
     app,
     client,

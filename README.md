@@ -1,100 +1,113 @@
 # SpiderShare API
 
-Versión 1.0.0 - primera release estable.
+Backend de SpiderShare construido con FastAPI, SQLAlchemy, Alembic, MySQL, Redis y RQ. El proyecto esta organizado por modulos de negocio para mantener separadas las rutas HTTP, los casos de uso, el dominio y la infraestructura.
 
-API backend de SpiderShare construida con FastAPI, SQLAlchemy, Alembic y MySQL. El proyecto esta organizado por modulos de negocio para que sea facil anadir nuevas areas sin mezclar rutas, casos de uso, dominio e infraestructura.
+## Estado Actual
 
-Ahora mismo incluye:
+La API incluye:
 
-- Autenticacion con JWT.
-- Gestion de usuarios, roles, passwords y avatares.
-- Integracion con Steam para consultar juegos publicos.
-- Gestion de videos: upload, listado, descarga, streaming, miniaturas, favoritos y reacciones.
-- Migraciones automaticas con Alembic.
+- Autenticacion con JWT bearer.
+- Gestion de usuarios, roles, passwords, perfil y avatares.
+- Integracion publica con Steam para consultar juegos de perfiles publicos.
+- Gestion de videos: subida, listado publico, detalle, descarga, streaming, miniaturas, favoritos y reacciones.
+- Procesado asincrono de videos con Redis + RQ y worker separado.
+- Estados de procesado: `pending`, `processing`, `ready`, `failed`.
+- Historial de errores de procesado en `video_processing_errors`.
+- Reintento de procesado para super admin.
+- Idempotencia en `POST /videos` mediante `Idempotency-Key`.
+- Logging con contexto de request, usuario, worker, job y video.
+- Worker de videos `jaimito_worker` con logs tecnicos y mensajes marcados estilo Jaimito.
+- Migraciones Alembic ejecutadas en el arranque Docker.
 - Seed automatico de super admin.
-- Tests unitarios y HTTP aislados de base de datos y red.
-- Deploy mediante webhook de Portainer despues de pasar tests en CI/CD.
+- Tests unitarios y HTTP con dependencias fake.
 
 ## Stack
 
 - Python 3.12 en Docker.
-- FastAPI.
-- Uvicorn.
+- FastAPI + Uvicorn.
 - Pydantic Settings.
-- SQLAlchemy.
-- Alembic.
+- SQLAlchemy + Alembic.
 - MySQL 8.4.
-- Redis + RQ para la cola de procesado de videos.
+- Redis 7 + RQ.
+- FFmpeg para transcodificacion y miniaturas.
 - python-jose para JWT.
 - bcrypt para passwords.
 - Pytest + HTTPX para tests.
 
-## Estructura
+## Arquitectura
 
 ```text
 app/
-  bootstrap/                 Arranque de FastAPI, routers y seed inicial.
+  bootstrap/
+    app_factory.py          Crea FastAPI, middleware de logging y routers.
+    seed_super_admin.py     Seed inicial opcional de super admin.
   modules/
     auth/
-      application/           Casos de uso: register, login, password hashing.
-      entrypoints/           Rutas y schemas HTTP.
-      infrastructure/        JWT.
-      wiring.py              Dependencias FastAPI del modulo.
+      application/          Login, registro y password hashing.
+      entrypoints/          Rutas y schemas HTTP.
+      infrastructure/       JWT.
+      wiring.py             Dependencias FastAPI del modulo.
     users/
-      domain/                Entidades, roles y puertos.
-      entrypoints/           Rutas y schemas HTTP.
-      infrastructure/        Modelos SQLAlchemy, mappers y repositorio.
+      domain/               Entidad User, roles y reglas de permisos.
+      entrypoints/          Rutas y schemas HTTP.
+      infrastructure/       SQLAlchemy, mappers y repositorio.
       wiring.py
     steam/
-      application/           Casos de uso de Steam.
-      domain/                Entidades y puertos.
-      entrypoints/           Rutas y schemas HTTP.
-      infrastructure/        Modelos, mappers y repositorios.
+      application/          Persistencia/upsert de juegos Steam.
+      domain/               Entidad SteamGame y puertos.
+      entrypoints/          Ruta publica de juegos.
+      infrastructure/       Cliente/repositorio/modelos/mappers.
+      wiring.py
+    videos/
+      application/          Upload, list, get, update, delete, favorite, react, process.
+      domain/               Video, estados, permisos y puertos.
+      entrypoints/          Rutas, schemas, validacion e idempotencia HTTP.
+      infrastructure/       Modelos, mappers, repositorio y cola RQ.
       wiring.py
   shared/
     infrastructure/
-      db/                    Base SQLAlchemy y sesiones.
+      db/                   Base SQLAlchemy y sesiones.
       providers/
-        steam/               Cliente de Steam Web API.
-        storage/             Preparado para almacenamiento de videos.
-config/                      Settings.
-migrations/                  Alembic.
-requirements/                Dependencias runtime y dev.
-tests/                       Tests unitarios y HTTP.
+        steam/              Cliente Steam Web API.
+        storage/            VideoStorage y VideoTranscoder.
+      idempotency.py        Tabla y repositorio de idempotencia.
+      logging.py            Logging con contextvars.
+      jaimito_logging.py    Mensajes del worker Jaimito.
+  workers/
+    video_processing.py     Worker RQ de procesado de videos.
+config/
+  settings.py               Variables de entorno.
+migrations/
+  versions/                 Migraciones Alembic.
+requirements/
+tests/
+storage/videos/
 ```
 
-La idea principal es mantener cada modulo con estas capas:
+Cada modulo sigue esta idea:
 
-- `domain`: reglas puras, entidades y puertos.
+- `domain`: entidades, enums, reglas puras y puertos.
 - `application`: casos de uso.
-- `entrypoints`: HTTP, schemas y traduccion de errores a status codes.
-- `infrastructure`: SQLAlchemy, mappers y adaptadores externos.
+- `entrypoints`: HTTP, schemas, validacion y traduccion de errores.
+- `infrastructure`: adaptadores concretos, SQLAlchemy, mappers y servicios externos.
 - `wiring.py`: dependencias de FastAPI.
 
-## Entornos
+## Arranque Rapido con Docker
 
-El proyecto usa variables de entorno desde `.env` en local y `stack.env` cuando se ejecuta como stack en Portainer. Los compose leen ambos si existen.
-
-### Desarrollo
-
-En desarrollo se usa `docker-compose.dev.yml`, que monta el codigo local dentro del contenedor y arranca Uvicorn con `--reload`. El compose levanta `api`, `worker`, `redis` y `mysql`.
+Para desarrollo:
 
 ```bash
 cp .env.example .env
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ```
 
-La API queda en:
+Servicios en desarrollo:
 
-```text
-http://localhost:8000
-```
-
-Documentacion interactiva de FastAPI:
-
-```text
-http://localhost:8000/docs
-```
+- API: `http://localhost:8000`
+- Docs OpenAPI: `http://localhost:8000/docs`
+- MySQL: expuesto en `${MYSQL_PORT:-3306}`
+- Redis: expuesto en `${REDIS_PORT:-6379}`
+- Worker: sin puerto, consume jobs desde Redis.
 
 Healthcheck:
 
@@ -102,80 +115,135 @@ Healthcheck:
 curl http://localhost:8000/health
 ```
 
-### Produccion o Portainer
+Version:
 
-En produccion se usa `docker-compose.yml`. El contenedor:
+```bash
+curl http://localhost:8000/version
+```
 
-1. Espera a que MySQL este healthy.
-2. Ejecuta migraciones: `alembic upgrade head`.
-3. Siembra el super admin si corresponde.
-4. Arranca Uvicorn.
+## Docker y Servicios
 
-Comando equivalente:
+`docker-compose.yml` define la topologia base:
+
+- `api`: ejecuta migraciones, seed de super admin y arranca Uvicorn.
+- `worker`: ejecuta `python -m app.workers.video_processing`.
+- `redis`: cola RQ interna, sin puerto publicado en produccion.
+- `mysql`: base de datos con volumen persistente.
+- `video_storage`: volumen persistente para videos.
+- `proxy_network`: red externa para proxy inverso si se usa Portainer/Caddy.
+
+`docker-compose.dev.yml` sobreescribe desarrollo:
+
+- Monta el codigo local en `/app`.
+- Arranca Uvicorn con `--reload`.
+- Publica Redis y MySQL para depuracion local.
+- Monta `./storage/videos`.
+
+Comandos utiles:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f api
+docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f worker
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec api sh
+docker compose -f docker-compose.yml -f docker-compose.dev.yml down
+```
+
+Produccion/Portainer:
 
 ```bash
 docker compose up --build -d
 ```
 
-En Portainer, define las variables en `stack.env` o en el editor de variables del stack. Como minimo revisa:
+En produccion revisa que exista la red externa configurada con `PROXY_NETWORK_NAME` si usas el compose base tal cual.
+
+## Variables de Entorno
+
+El proyecto lee `.env` en local y tambien `stack.env` si existe en Docker/Portainer.
+
+Variables principales:
+
+| Variable | Uso |
+| --- | --- |
+| `APP_NAME` | Nombre de la aplicacion. |
+| `APP_VERSION` | Version devuelta por `/version`. |
+| `APP_ENV` | Entorno logico. `local`, `dev` o `development` activan logging DEBUG. |
+| `APP_DEBUG` | Flag de debug. |
+| `APP_HOST` | Host esperado para arranque local si se usa externamente. |
+| `APP_PORT` | Puerto publicado por Docker para la API. |
+| `DATABASE_URL` | URL SQLAlchemy usada por app y Alembic. |
+| `MYSQL_HOST` | Host MySQL para compose/configuracion auxiliar. |
+| `MYSQL_PORT` | Puerto MySQL publicado en desarrollo. |
+| `MYSQL_DATABASE` | Base de datos MySQL. |
+| `MYSQL_USER` | Usuario MySQL. |
+| `MYSQL_PASSWORD` | Password MySQL. |
+| `MYSQL_ROOT_PASSWORD` | Password root MySQL. |
+| `SECRET_KEY` | Clave para firmar JWT. Debe ser larga y secreta. |
+| `JWT_ALGORITHM` | Algoritmo JWT. Por defecto `HS256`. |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Minutos de vida del token. |
+| `SUPER_ADMIN_USERNAME` | Username inicial del super admin. |
+| `SUPER_ADMIN_PASSWORD` | Password inicial del super admin. |
+| `STEAM_WEB_API_KEY` | API key de Steam. Necesaria para consultar Steam real. |
+| `STEAM_WEB_API_BASE_URL` | URL base de Steam Web API. |
+| `VIDEO_STORAGE_PATH` | Carpeta/volumen donde se guardan originales, variantes y miniaturas. |
+| `MAX_VIDEO_SIZE_BYTES` | Tamano maximo de subida. Por defecto `524288000` bytes. |
+| `MAX_VIDEO_DURATION_SECONDS` | Duracion maxima aceptada. Por defecto `300`. |
+| `MAX_VIDEO_REACTIONS_PER_USER` | Numero maximo de reacciones distintas por usuario y video. |
+| `VIDEO_ALLOWED_MIME_TYPES` | Lista JSON de MIME types permitidos. |
+| `REDIS_URL` | URL de Redis usada por API y worker. |
+| `VIDEO_PROCESSING_QUEUE_NAME` | Nombre de la cola RQ. |
+| `VIDEO_PROCESSING_MAX_ATTEMPTS` | Reintentos maximos por job. |
+| `VIDEO_PROCESSING_JOB_TIMEOUT_SECONDS` | Timeout maximo de cada job. |
+| `PROXY_NETWORK_NAME` | Nombre de red externa para proxy inverso. |
+
+Ejemplo minimo:
 
 ```env
-APP_ENV=production
-APP_DEBUG=false
+APP_NAME=SpiderShare
+APP_VERSION=1.0.0
+APP_ENV=local
+APP_DEBUG=true
 APP_PORT=8000
 
 MYSQL_DATABASE=spidershare
 MYSQL_USER=spidershare
-MYSQL_PASSWORD=change-me
-MYSQL_ROOT_PASSWORD=change-me-too
+MYSQL_PASSWORD=spidershare_password
+MYSQL_ROOT_PASSWORD=root_password
+DATABASE_URL=mysql+pymysql://spidershare:spidershare_password@mysql:3306/spidershare
 
-DATABASE_URL=mysql+pymysql://spidershare:change-me@mysql:3306/spidershare
-
-SECRET_KEY=change-this-to-a-long-random-secret
+SECRET_KEY=change-me-in-real-env
 JWT_ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=15
 
 SUPER_ADMIN_USERNAME=admin
 SUPER_ADMIN_PASSWORD=change-me-before-first-start
 
-STEAM_WEB_API_KEY=
-STEAM_WEB_API_BASE_URL=https://api.steampowered.com
-
 VIDEO_STORAGE_PATH=/app/storage/videos
+MAX_VIDEO_SIZE_BYTES=524288000
+MAX_VIDEO_DURATION_SECONDS=300
+MAX_VIDEO_REACTIONS_PER_USER=2
+VIDEO_ALLOWED_MIME_TYPES=["video/mp4","video/webm"]
+
 REDIS_URL=redis://redis:6379/0
 VIDEO_PROCESSING_QUEUE_NAME=video-processing
+VIDEO_PROCESSING_MAX_ATTEMPTS=3
+VIDEO_PROCESSING_JOB_TIMEOUT_SECONDS=900
+
+STEAM_WEB_API_KEY=
+STEAM_WEB_API_BASE_URL=https://api.steampowered.com
 ```
 
-Importante: cambia `SECRET_KEY`, passwords de MySQL y credenciales del super admin antes de desplegar.
+## Base de Datos y Migraciones
 
-## Variables de entorno
+Alembic usa `DATABASE_URL` desde `config.settings`.
 
-| Variable | Uso |
-| --- | --- |
-| `APP_NAME` | Nombre de la aplicacion. |
-| `APP_VERSION` | Version de la aplicacion. |
-| `APP_ENV` | Entorno logico: `local`, `development`, `production`, etc. |
-| `APP_DEBUG` | Flag de debug. |
-| `APP_PORT` | Puerto expuesto por Docker. |
-| `DATABASE_URL` | URL SQLAlchemy usada por app y Alembic. |
-| `VIDEO_STORAGE_PATH` | Ruta donde se guardan los videos originales, variantes y miniaturas. |
-| `REDIS_URL` | URL de Redis usada por API y worker para la cola de videos. |
-| `VIDEO_PROCESSING_QUEUE_NAME` | Nombre de la cola RQ de procesado. |
-| `VIDEO_PROCESSING_MAX_ATTEMPTS` | Reintentos maximos del job de procesado. |
-| `VIDEO_PROCESSING_JOB_TIMEOUT_SECONDS` | Timeout maximo de procesado por video. |
-| `SECRET_KEY` | Clave para firmar JWT. Obligatoria. |
-| `JWT_ALGORITHM` | Algoritmo JWT. Por defecto `HS256`. |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Duracion del token de acceso. |
-| `SUPER_ADMIN_USERNAME` | Usuario inicial con rol `super_admin`. |
-| `SUPER_ADMIN_PASSWORD` | Password inicial del super admin. |
-| `STEAM_WEB_API_KEY` | API key de Steam. Necesaria para endpoints que consultan Steam real. |
-| `STEAM_WEB_API_BASE_URL` | Base URL de Steam Web API. |
+En Docker, la API ejecuta automaticamente:
 
-## Base de datos y migraciones
+```bash
+alembic -c /app/alembic.ini upgrade head
+python -m app.bootstrap.seed_super_admin
+```
 
-Alembic toma `DATABASE_URL` desde `config.settings`.
-
-Crear una migracion despues de cambiar modelos:
+Crear una migracion:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.dev.yml exec api alembic revision --autogenerate -m "describe change"
@@ -193,29 +261,32 @@ Ver historial:
 docker compose -f docker-compose.yml -f docker-compose.dev.yml exec api alembic history
 ```
 
-En el arranque normal con Docker, `alembic upgrade head` se ejecuta automaticamente.
+Migraciones actuales importantes:
 
-## Super admin inicial
+- `users`: tabla de usuarios y columna `role`.
+- `steam_games`: cache/persistencia de juegos Steam.
+- `videos`: videos, categorias, tags, favoritos y reacciones.
+- `video_variants`: salidas de procesado y miniaturas.
+- `video_processing_errors`: historial de fallos de procesado por intento.
+- `idempotency_records`: soporte para `Idempotency-Key`.
 
-En cada arranque Docker se ejecuta:
+## Super Admin Inicial
 
-```bash
-python -m app.bootstrap.seed_super_admin
-```
+En cada arranque Docker se ejecuta el seed de super admin.
 
 Comportamiento:
 
-- Si no hay `SUPER_ADMIN_USERNAME` ni `SUPER_ADMIN_PASSWORD`, no hace nada.
-- Si solo una de las dos variables existe, falla para evitar configuraciones incompletas.
-- Si ya existe un usuario `super_admin`, no crea otro.
-- Si el username configurado ya existe, no lo convierte automaticamente.
-- Si no hay super admin, crea uno con el username y password configurados.
+- Si no hay `SUPER_ADMIN_USERNAME` ni `SUPER_ADMIN_PASSWORD`, no crea nada.
+- Si solo una variable esta configurada, falla para evitar un estado incompleto.
+- Si ya existe un `super_admin`, no crea otro.
+- Si el username configurado ya existe con otro rol, no lo convierte.
+- Si no hay super admin, crea uno con las credenciales configuradas.
 
-## Autenticacion y roles
+## Autenticacion y Roles
 
 El login devuelve un JWT bearer token.
 
-Roles actuales:
+Roles:
 
 - `user`
 - `admin`
@@ -225,300 +296,378 @@ Reglas principales:
 
 - `admin` puede crear usuarios `user`.
 - `super_admin` puede crear `admin` y `user`.
-- Nadie puede crear otro `super_admin` desde `/auth/register`.
+- Nadie crea `super_admin` desde `/auth/register`.
 - Un usuario puede gestionarse a si mismo, salvo cambiar su propio `role` o `is_active`.
 - Un rol solo puede gestionar usuarios de rango inferior.
+- Usuarios inactivos no pueden autenticarse.
 
-## Endpoints principales
+Header:
+
+```http
+Authorization: Bearer <token>
+```
+
+## Endpoints
 
 ### General
 
-| Metodo | Ruta | Descripcion |
-| --- | --- | --- |
-| `GET` | `/health` | Estado basico de la API. |
-| `GET` | `/version` | Version de la aplicacion. |
+| Metodo | Ruta | Auth | Descripcion |
+| --- | --- | --- | --- |
+| `GET` | `/health` | No | Estado basico. |
+| `GET` | `/version` | No | Version configurada. |
 
 ### Auth
 
-| Metodo | Ruta | Descripcion |
-| --- | --- | --- |
-| `POST` | `/auth/login` | Login con username y password. |
-| `POST` | `/auth/register` | Crear usuario. Requiere admin. |
-| `GET` | `/auth/me` | Devuelve el usuario autenticado. |
+| Metodo | Ruta | Auth | Descripcion |
+| --- | --- | --- | --- |
+| `POST` | `/auth/login` | No | Login con JSON o form `username/password`. |
+| `POST` | `/auth/register` | Admin | Crea un usuario permitido por rol. |
+| `GET` | `/auth/me` | Si | Devuelve el usuario autenticado. |
 
 ### Users
 
-| Metodo | Ruta | Descripcion |
-| --- | --- | --- |
-| `GET` | `/users` | Lista usuarios visibles para el admin actual. |
-| `GET` | `/users/{user_id}` | Obtiene un usuario si hay permiso. |
-| `PATCH` | `/users/{user_id}` | Actualiza username, perfil, rol o estado. |
-| `PATCH` | `/users/{user_id}/password` | Cambia password. |
-| `PUT` | `/users/{user_id}/avatar` | Sube avatar. Maximo 2 MB. |
-| `GET` | `/users/{user_id}/avatar` | Descarga avatar. |
-| `DELETE` | `/users/{user_id}/avatar` | Elimina avatar. |
-| `DELETE` | `/users/{user_id}` | Elimina usuario. |
-
-### Videos
-
-| Metodo | Ruta | Descripcion |
-| --- | --- | --- |
-| `POST` | `/videos` | Sube un video con titulo, descripcion, categorias y etiquetas. |
-| `GET` | `/videos` | Lista videos publicos y privados segun permisos. |
-| `GET` | `/videos/{video_id}` | Obtiene datos del video. |
-| `GET` | `/videos/{video_id}/download` | Descarga el archivo original. |
-| `GET` | `/videos/{video_id}/stream` | Reproduce un variante transcodificado. |
-| `GET` | `/videos/{video_id}/thumbnail` | Obtiene miniatura JPEG. |
-| `PATCH` | `/videos/{video_id}` | Actualiza metadatos del video. |
-| `DELETE` | `/videos/{video_id}` | Elimina el video. |
-| `POST` | `/videos/{video_id}/favorite` | Marca el video como favorito. |
-| `DELETE` | `/videos/{video_id}/favorite` | Quita el video de favoritos. |
-| `GET` | `/users/me/video-favorites` | Lista los videos favoritos del usuario autenticado. |
-| `GET` | `/videos/{video_id}/reactions` | Lista conteos de reacciones del video. |
-| `POST` | `/videos/{video_id}/reactions` | Agrega o actualiza una reaccion. |
-| `DELETE` | `/videos/{video_id}/reactions` | Elimina la reaccion del usuario. |
+| Metodo | Ruta | Auth | Descripcion |
+| --- | --- | --- | --- |
+| `GET` | `/users` | Admin | Lista usuarios visibles para el admin actual. |
+| `GET` | `/users/{user_id}` | Si | Obtiene un usuario si hay permiso. |
+| `PATCH` | `/users/{user_id}` | Si | Actualiza username, display name, bio, rol o estado. |
+| `PATCH` | `/users/{user_id}/password` | Si | Cambia password. Para uno mismo exige password actual. |
+| `PUT` | `/users/{user_id}/avatar` | Si | Sube avatar. Maximo 2 MB. |
+| `GET` | `/users/{user_id}/avatar` | Si | Descarga avatar. |
+| `DELETE` | `/users/{user_id}/avatar` | Si | Elimina avatar. |
+| `DELETE` | `/users/{user_id}` | Si | Elimina usuario si hay permiso. No elimina super admin. |
 
 ### Steam
 
-| Metodo | Ruta | Descripcion |
-| --- | --- | --- |
-| `GET` | `/steam/users/{steam_id_or_vanity}/games` | Consulta publica de juegos publicos de Steam. No requiere login. |
+| Metodo | Ruta | Auth | Descripcion |
+| --- | --- | --- | --- |
+| `GET` | `/steam/users/{steam_id_or_vanity}/games` | No | Consulta juegos publicos de Steam y persiste juegos validos. |
+
+Parametros:
+
+- `include_played_free_games`: boolean, por defecto `true`.
+- `language`: string, por defecto `english`.
 
 `steam_id_or_vanity` acepta SteamID64, vanity name o URLs de Steam tipo `/id/...` y `/profiles/...`.
 
-## Tests
+### Videos
 
-Instalar dependencias de desarrollo:
+| Metodo | Ruta | Auth | Descripcion |
+| --- | --- | --- | --- |
+| `POST` | `/videos` | Si | Sube original, crea video `pending`, encola procesado y responde `201`. |
+| `POST` | `/videos/{video_id}/processing/retry` | Super admin | Limpia salidas de procesado y reencola un video no completo. |
+| `GET` | `/videos` | Publico | Lista videos visibles. Acepta token opcional para incluir privados accesibles. |
+| `GET` | `/videos/{video_id}` | Publico | Detalle si el video es visible para el usuario actual o anonimo. |
+| `GET` | `/videos/{video_id}/download` | Publico | Descarga original si hay permiso. |
+| `GET` | `/videos/{video_id}/stream` | Publico | Sirve variante procesada o el original. |
+| `GET` | `/videos/{video_id}/thumbnail` | Publico | Sirve miniatura JPEG si hay permiso. |
+| `PATCH` | `/videos/{video_id}` | Si | Actualiza metadata si owner/admin/super admin. |
+| `DELETE` | `/videos/{video_id}` | Si | Elimina video si owner/super admin. |
+| `POST` | `/videos/{video_id}/favorite` | Si | Marca favorito. |
+| `DELETE` | `/videos/{video_id}/favorite` | Si | Quita favorito. |
+| `GET` | `/users/me/video-favorites` | Si | Lista favoritos del usuario autenticado. |
+| `GET` | `/videos/{video_id}/reactions` | Publico | Conteos de reacciones visibles. |
+| `POST` | `/videos/{video_id}/reactions` | Si | Crea o actualiza reaccion. |
+| `DELETE` | `/videos/{video_id}/reactions` | Si | Elimina reaccion del usuario. |
+
+Filtros de `GET /videos`:
+
+- `title`: busqueda parcial.
+- `tags`: lista de tags.
+- `category_ids`: lista de UUID.
+- `owner_id`: UUID del propietario.
+- `limit`: `1..100`, por defecto `20`.
+- `offset`: por defecto `0`.
+
+`GET /videos` es publico. Si no hay token, solo devuelve videos visibles para anonimos. Si hay token valido, puede incluir videos registrados/privados segun permisos.
+
+## Contrato de Videos
+
+Las respuestas de video incluyen el propietario enriquecido:
+
+```json
+{
+  "id": "video-uuid",
+  "owner_id": "user-uuid",
+  "owner": {
+    "id": "user-uuid",
+    "username": "alice",
+    "display_name": "Alice"
+  },
+  "title": "Boss clip",
+  "description": "Context",
+  "processing_status": "pending",
+  "playback_url": null,
+  "download_url": "/videos/video-uuid/download"
+}
+```
+
+Campos relevantes:
+
+- `processing_status`: `pending`, `processing`, `ready`, `failed`.
+- `playback_url`: aparece cuando el video esta `ready`.
+- `download_url`: apunta al original.
+- `thumbnail_url`: aparece cuando hay miniatura.
+- `variants`: salidas procesadas por FFmpeg.
+- `latest_processing_error`: ultimo fallo de procesado, si existe.
+- `categories` y `tags`: metadata publica.
+- `is_owner`, `can_edit`, `can_delete`, `is_favorite`, `reactions`: aparecen en detalle.
+
+## Subida y Procesado de Videos
+
+`POST /videos` recibe `multipart/form-data`:
+
+- `file`: `video/mp4` o `video/webm` por defecto.
+- `title`: requerido, maximo 255.
+- `description`: opcional, maximo 5000.
+- `is_registered_only`: boolean.
+- `category_ids`: lista de UUID.
+- `tags`: lista de strings, maximo configurado por `max_video_tags`.
+
+Flujo:
+
+1. La API valida usuario, metadata, MIME type, tamano y duracion.
+2. Guarda el original en `VIDEO_STORAGE_PATH`.
+3. Crea el video en base de datos con `processing_status=pending`.
+4. Encola un job RQ con id `video-processing-{video_id}`.
+5. Responde `201` sin esperar a FFmpeg.
+6. El worker pasa el video a `processing`.
+7. Si FFmpeg termina bien, guarda variantes/thumbnail y marca `ready`.
+8. Si falla, marca `failed`, guarda una fila en `video_processing_errors` y deja logs con `video_id`, `job_id`, propietario, intento, duracion y error.
+
+El worker debe compartir el mismo volumen de videos que la API.
+
+Ver logs del worker:
 
 ```bash
-python -m pip install -r requirements/dev.txt
+docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f worker
 ```
 
-Ejecutar todos los tests:
+Reejecutar worker manualmente dentro del stack:
 
 ```bash
-pytest
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec worker python -m app.workers.video_processing
 ```
 
-Suite rapida actual:
+Reintentar procesado como super admin:
 
 ```bash
-pytest -m "unit or http"
+curl -X POST http://localhost:8000/videos/<video_id>/processing/retry \
+  -H "Authorization: Bearer <super-admin-token>"
 ```
 
-Solo unitarios:
+El reintento solo acepta videos no completos (`pending`, `processing` o `failed`). Antes de reencolar, borra variantes, miniatura y temporales del video, conserva el original y deja el estado en `pending`.
 
-```bash
-pytest -m unit
+## Idempotencia
+
+`POST /videos` acepta:
+
+```http
+Idempotency-Key: <clave-unica-del-cliente>
 ```
 
-Solo HTTP con FastAPI `TestClient`:
+Comportamiento:
 
-```bash
-pytest -m http
-```
+- Misma key + mismo usuario + mismo payload: devuelve la misma respuesta guardada.
+- Misma key + payload diferente: `409 Conflict`.
+- Key en blanco: `400 Bad Request`.
+- Request aun en proceso: `409 Conflict`.
+- Error de servidor durante subida: se registra como failed para diagnostico.
 
-Marcas disponibles:
+La key se guarda por scope `videos.upload`, usuario y key. El payload se compara por hash de metadata y archivo.
 
-- `unit`: tests puros sin DB, red ni `TestClient`.
-- `http`: rutas FastAPI con overrides de dependencias.
-- `integration`: reservado para tests con DB, migraciones, Docker o servicios externos.
+## Logging
 
-Los tests actuales no necesitan MySQL, Docker, Steam real ni `STEAM_WEB_API_KEY`.
+El logging se configura en `app/shared/infrastructure/logging.py`.
 
-## CI/CD
+Cada linea incluye:
 
-El workflow esta en:
+- `request_id`
+- `client_ip`
+- `auth_status`
+- `user_id`
+- `username`
+- `user_role`
+- `worker`
+- `job_id`
+- `video_id`
+- `user_agent`
 
-```text
-.github/workflows/deploy.yml
-```
+La API respeta `X-Request-ID` si llega y lo devuelve en la respuesta. Si no llega, genera uno nuevo.
 
-Flujo actual:
+Niveles:
 
-1. En cada push a `main`, GitHub Actions ejecuta tests.
-2. Si pasan, dispara el webhook de Portainer.
-3. Si fallan, no hay deploy.
+- `INFO`: requests correctas, login/register correctos, subida, encolado, procesado terminado.
+- `WARNING`: errores esperados de cliente, credenciales invalidas, conflictos de idempotencia.
+- `ERROR`: respuestas `5xx`.
+- `EXCEPTION`: fallos con traceback, como Redis caido, FFmpeg fallando o errores no controlados.
 
-Tambien se puede lanzar manualmente con `workflow_dispatch` desde GitHub Actions.
+El worker usa `worker=jaimito_worker`, rellena `job_id` y `video_id`, registra `owner_id`, `username`, estado anterior/nuevo, duracion de transcodificacion y error, y ademas emite eventos:
 
-Secret necesario:
+- `event=jaimito.worker.waking_up`
+- `event=jaimito.worker.redis_ready`
+- `event=jaimito.worker.waiting`
+- `event=jaimito.job.started`
+- `event=jaimito.job.finished`
+- `event=jaimito.job.failed`
+- `event=jaimito.worker.shutting_down`
 
-```text
-PORTAINER_WEBHOOK_URL
-```
-
-## Desarrollo local sin Docker
-
-Si quieres ejecutar fuera de Docker:
+## Desarrollo Local sin Docker
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate
+.venv\Scripts\activate
 python -m pip install -r requirements/dev.txt
 cp .env.example .env
 ```
 
-Necesitas ajustar `DATABASE_URL` para apuntar a una base accesible desde tu maquina.
+Necesitas MySQL, Redis y FFmpeg accesibles desde tu maquina. Ajusta:
 
-Aplicar migraciones:
+```env
+DATABASE_URL=mysql+pymysql://...
+REDIS_URL=redis://localhost:6379/0
+VIDEO_STORAGE_PATH=./storage/videos
+```
+
+Migraciones:
 
 ```bash
 alembic upgrade head
 ```
 
-Arrancar API:
+API:
 
 ```bash
-uvicorn run:app --host 0.0.0.0 --port 8000 --reload
+uvicorn run:app --host 0.0.0.0 --port 8000 --reload --no-access-log
 ```
 
-## Como anadir un modulo nuevo
-
-Usa la misma forma que `users` o `steam`.
-
-```text
-app/modules/nuevo_modulo/
-  domain/
-    ports.py
-    entidad.py
-  application/
-    caso_de_uso.py
-  entrypoints/
-    routes.py
-    schemas.py
-  infrastructure/
-    models.py
-    mappers.py
-    repository.py
-  wiring.py
-```
-
-Pasos recomendados:
-
-1. Define entidades y reglas en `domain`.
-2. Define puertos en `domain/ports.py`.
-3. Implementa casos de uso en `application`.
-4. Crea modelos SQLAlchemy y mappers en `infrastructure`.
-5. Implementa repositorios contra SQLAlchemy.
-6. Expone rutas en `entrypoints/routes.py`.
-7. Declara dependencias en `wiring.py`.
-8. Incluye el router en `app/bootstrap/app_factory.py`.
-9. Crea una migracion Alembic.
-10. Anade tests unitarios primero y HTTP despues.
-
-## Modulo de videos
-
-El proyecto ya incluye un modulo de videos con soporte para:
-
-- Subida de videos con metadata y tags.
-- Listado de videos con filtros de titulo, tags y categorias.
-- Descarga del archivo original.
-- Streaming de variantes transcodificadas.
-- Miniaturas JPEG.
-- Favoritos y reacciones por usuario.
-- Control de acceso para videos privados y registrados.
-
-El almacenamiento de videos usa `VIDEO_STORAGE_PATH` y la carpeta `storage/videos`.
-
-La subida responde rapido con el video en estado `pending`, encola `process_video(video_id)` en Redis/RQ y el worker independiente lo mueve por `processing`, `ready` o `failed`. El frontend puede consultar `GET /videos/{id}` para refrescar `processing_status`.
-
-Para evitar duplicados por reintentos de red, `POST /videos` acepta la cabecera `Idempotency-Key`. Si se repite la misma key con el mismo payload, la API devuelve la misma respuesta; si se reutiliza con otro payload, responde `409`.
-
-Comandos utiles:
+Worker:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f worker
-docker compose -f docker-compose.yml -f docker-compose.dev.yml exec worker python -m app.workers.video_processing
+python -m app.workers.video_processing
 ```
 
-Una implementacion limpia utiliza la siguiente estructura:
+## Tests
 
-```text
-app/modules/videos/
-  domain/
-    video.py
-    ports.py
-  application/
-    upload_video.py
-    list_videos.py
-    get_video.py
-    delete_video.py
-  entrypoints/
-    routes.py
-    schemas.py
-  infrastructure/
-    models.py
-    mappers.py
-    repository.py
-```
-
-Decisiones pendientes para videos:
-
-- Tamano maximo de archivo.
-- Formatos permitidos.
-- Si el archivo se sirve desde FastAPI, Nginx, Portainer volume o storage externo.
-- Si se guarda metadata en DB: propietario, nombre, mime type, tamano, estado, fechas.
-- Si habra procesamiento/transcodificacion.
-- Politica de permisos: videos propios, compartidos, admin, publico/privado.
-
-## Checklist para cambios
-
-Antes de abrir PR o desplegar:
+Instalar dependencias:
 
 ```bash
+python -m pip install -r requirements/dev.txt
+```
+
+Ejecutar todo:
+
+```bash
+pytest
+```
+
+Suites:
+
+```bash
+pytest -m unit
+pytest -m http
 pytest -m "unit or http"
 ```
 
-Si cambias modelos:
+Marcas:
+
+- `unit`: tests puros sin DB, red ni `TestClient`.
+- `http`: rutas FastAPI con overrides de dependencias.
+- `integration`: reservado para DB, Docker o servicios externos reales.
+
+Los tests actuales usan fakes para repositorios, storage, transcoder, cola y cliente Steam cuando corresponde.
+
+Test de integracion Redis opt-in:
+
+```bash
+set REDIS_INTEGRATION_URL=redis://localhost:6379/0
+pytest -m integration tests/integration/test_video_processing_queue.py
+```
+
+Si `REDIS_INTEGRATION_URL` no esta configurada, el test se salta.
+
+## CI/CD
+
+El changelog menciona despliegue mediante workflow GitHub Actions y webhook de Portainer. Si se usa ese flujo, el secreto esperado es:
+
+```text
+PORTAINER_WEBHOOK_URL
+```
+
+Antes de desplegar:
+
+```bash
+pytest -m "unit or http"
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+## Permisos Resumidos
+
+Videos:
+
+- Anonimo: puede listar/ver/descargar/stream/thumbnail/reacciones de videos publicos.
+- Usuario autenticado: puede ver videos publicos y videos registrados; puede subir, favorito y reaccionar.
+- Owner: puede editar y borrar sus videos.
+- Admin: puede editar videos segun reglas del dominio.
+- Super admin: puede borrar videos.
+
+Users:
+
+- Admin ve y gestiona usuarios de rango inferior.
+- Super admin ve y gestiona admins y usuarios.
+- Un usuario puede gestionar su propio perfil, avatar y password, con restricciones sobre rol/estado.
+
+Auth:
+
+- Token invalido, usuario inexistente o usuario inactivo se tratan como credenciales no validas.
+
+## Respuestas y Errores Habituales
+
+- `400`: payload invalido, archivo vacio, MIME no permitido, `Idempotency-Key` en blanco.
+- `401`: falta token o credenciales invalidas en rutas protegidas.
+- `403`: usuario autenticado sin permiso.
+- `404`: recurso no encontrado o no visible.
+- `409`: conflicto de idempotencia, limite de reacciones o video no listo para variante procesada.
+- `413`: video/avatar demasiado grande.
+- `422`: validacion de FastAPI/Pydantic.
+- `503`: cola de procesado no disponible al subir video.
+
+Si `POST /videos` devuelve `503`, mira el log de la API con el mismo `request_id`; debe incluir `queue_backend`, `video_id`, `owner_id` y `error_type`.
+
+## Checklist para Cambios
+
+Cuando cambies modelos:
 
 ```bash
 alembic revision --autogenerate -m "describe change"
 alembic upgrade head
 ```
 
-Si cambias variables:
+Cuando cambies variables:
 
 - Actualiza `.env.example`.
 - Actualiza `stack.env` en Portainer.
-- Revisa este README.
+- Actualiza este README.
 
-## Comandos utiles
+Cuando cambies videos/worker:
 
-Arrancar dev:
+- Prueba `POST /videos`.
+- Comprueba que responde `pending`.
+- Mira logs de `worker`.
+- Comprueba que pasa a `ready` o `failed`.
+- Prueba `/stream`, `/thumbnail` y `/download`.
 
-```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-```
+Cuando cambies contratos HTTP:
 
-Arrancar produccion local:
+- Actualiza schemas.
+- Actualiza tests HTTP.
+- Actualiza este README.
 
-```bash
-docker compose up --build -d
-```
+## Pendiente Conocido
 
-Ver logs:
-
-```bash
-docker compose logs -f api
-docker compose logs -f worker
-```
-
-Entrar al contenedor API:
-
-```bash
-docker compose exec api sh
-```
-
-Parar servicios:
-
-```bash
-docker compose down
-```
-
-Parar y borrar volumenes:
-
-```bash
-docker compose down -v
-```
+- Limpieza periodica de archivos huerfanos.
+- Integracion con webhooks de Discord.
+- Tests de integracion end-to-end con Redis/MySQL reales y worker ejecutando FFmpeg.
+- Contador de visualizaciones.
+- Asociacion opcional entre videos y juegos de Steam.
+- Subida por chunks si los limites actuales de archivo/proxy se quedan cortos.

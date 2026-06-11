@@ -55,6 +55,7 @@ def process_video_job(video_id: str) -> None:
             ProcessVideo(video_repository, video_transcoder).execute(
                 parsed_video_id,
                 raise_on_error=True,
+                job_id=current_job_id,
             )
     except Exception as error:
         jaimito_logger.job_failed(

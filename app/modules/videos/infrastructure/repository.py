@@ -26,6 +26,7 @@ from app.modules.videos.infrastructure.models import (
     VideoCategoryAssignmentModel,
     VideoFavoriteModel,
     VideoModel,
+    VideoProcessingErrorModel,
     VideoReactionModel,
     VideoTagAssignmentModel,
     VideoTagModel,
@@ -65,6 +66,7 @@ class SqlAlchemyVideoRepository(VideoRepository):
                     VideoTagAssignmentModel.tag,
                 ),
                 selectinload(VideoModel.variants),
+                selectinload(VideoModel.processing_errors),
                 selectinload(VideoModel.owner),
             )
             .order_by(
@@ -146,12 +148,47 @@ class SqlAlchemyVideoRepository(VideoRepository):
 
         return video_model_to_domain(model)
 
-    def mark_failed(self, video_id: UUID) -> Video | None:
+    def mark_failed(
+        self,
+        video_id: UUID,
+        *,
+        error_type: str,
+        error_message: str,
+        job_id: str | None,
+        duration_ms: float | None,
+    ) -> Video | None:
         model = self._get_model(video_id)
         if model is None:
             return None
 
         model.processing_status = VideoProcessingStatus.FAILED.value
+        model.processing_errors.append(
+            VideoProcessingErrorModel(
+                video_id=model.id,
+                attempt=len(model.processing_errors) + 1,
+                error_type=error_type,
+                error_message=error_message,
+                job_id=job_id,
+                duration_ms=duration_ms,
+            )
+        )
+        self.session.commit()
+        model = self._get_model(video_id)
+
+        return video_model_to_domain(model)
+
+    def reset_processing(self, video_id: UUID) -> Video | None:
+        model = self._get_model(video_id)
+        if model is None:
+            return None
+
+        model.processing_status = VideoProcessingStatus.PENDING.value
+        model.width = None
+        model.height = None
+        model.aspect_ratio = None
+        model.duration_seconds = None
+        model.thumbnail_path = None
+        model.variants.clear()
         self.session.commit()
         model = self._get_model(video_id)
 
@@ -256,6 +293,7 @@ class SqlAlchemyVideoRepository(VideoRepository):
                     VideoTagAssignmentModel.tag,
                 ),
                 selectinload(VideoModel.variants),
+                selectinload(VideoModel.processing_errors),
                 selectinload(VideoModel.owner),
             )
             .order_by(VideoFavoriteModel.created_at.desc())
@@ -376,6 +414,7 @@ class SqlAlchemyVideoRepository(VideoRepository):
                     VideoTagAssignmentModel.tag,
                 ),
                 selectinload(VideoModel.variants),
+                selectinload(VideoModel.processing_errors),
                 selectinload(VideoModel.owner),
             )
         )

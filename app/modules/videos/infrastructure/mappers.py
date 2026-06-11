@@ -7,6 +7,7 @@ from app.modules.videos.domain.video import (
     VideoCreate,
     VideoFavorite,
     VideoOwner,
+    VideoProcessingError,
     VideoProcessingStatus,
     VideoReaction,
     VideoTag,
@@ -18,6 +19,7 @@ from app.modules.videos.infrastructure.models import (
     VideoFavoriteModel,
     VideoModel,
     VideoReactionModel,
+    VideoProcessingErrorModel,
     VideoTagModel,
     VideoVariantModel,
 )
@@ -30,6 +32,11 @@ def video_model_to_domain(model: VideoModel) -> Video:
     ]
     tags = [video_tag_model_to_domain(assignment.tag) for assignment in model.tag_assignments]
     variants = [video_variant_model_to_domain(variant) for variant in model.variants]
+    latest_processing_error = (
+        video_processing_error_model_to_domain(model.processing_errors[-1])
+        if model.processing_errors
+        else None
+    )
 
     return Video(
         id=UUID(model.id),
@@ -60,6 +67,7 @@ def video_model_to_domain(model: VideoModel) -> Video:
         duration_seconds=model.duration_seconds,
         thumbnail_path=model.thumbnail_path,
         variants=variants,
+        latest_processing_error=latest_processing_error,
         favorite_count=model.favorite_count,
         categories=categories,
         tags=tags,
@@ -132,5 +140,20 @@ def video_variant_model_to_domain(model: VideoVariantModel) -> VideoVariant:
         bitrate_kbps=model.bitrate_kbps,
         size_bytes=model.size_bytes,
         path=model.path,
+        created_at=model.created_at,
+    )
+
+
+def video_processing_error_model_to_domain(
+    model: VideoProcessingErrorModel,
+) -> VideoProcessingError:
+    return VideoProcessingError(
+        id=UUID(model.id),
+        video_id=UUID(model.video_id),
+        attempt=model.attempt,
+        error_type=model.error_type,
+        error_message=model.error_message,
+        job_id=model.job_id,
+        duration_ms=model.duration_ms,
         created_at=model.created_at,
     )

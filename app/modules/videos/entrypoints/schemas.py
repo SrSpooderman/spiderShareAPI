@@ -10,6 +10,7 @@ from app.modules.videos.domain.video import (
     VideoAspectRatio,
     VideoCategory,
     VideoOwner,
+    VideoProcessingError,
     VideoProcessingStatus,
     VideoReaction,
     VideoTag,
@@ -105,6 +106,30 @@ class VideoVariantResponse(BaseModel):
         )
 
 
+class VideoProcessingErrorResponse(BaseModel):
+    id: UUID
+    video_id: UUID
+    attempt: int
+    error_type: str
+    error_message: str
+    job_id: str | None
+    duration_ms: float | None
+    created_at: datetime
+
+    @classmethod
+    def from_domain(cls, error: VideoProcessingError) -> "VideoProcessingErrorResponse":
+        return cls(
+            id=error.id,
+            video_id=error.video_id,
+            attempt=error.attempt,
+            error_type=error.error_type,
+            error_message=error.error_message,
+            job_id=error.job_id,
+            duration_ms=error.duration_ms,
+            created_at=error.created_at,
+        )
+
+
 class VideoSummaryResponse(BaseModel):
     id: UUID
     title: str
@@ -115,6 +140,7 @@ class VideoSummaryResponse(BaseModel):
     edited: bool
     edited_at: datetime | None
     processing_status: VideoProcessingStatus
+    latest_processing_error: VideoProcessingErrorResponse | None
     favorite_count: int
     popularity_score: int
     categories: list[VideoCategoryResponse]
@@ -141,6 +167,11 @@ class VideoSummaryResponse(BaseModel):
             edited=video.edited,
             edited_at=video.edited_at,
             processing_status=video.processing_status,
+            latest_processing_error=(
+                VideoProcessingErrorResponse.from_domain(video.latest_processing_error)
+                if video.latest_processing_error is not None
+                else None
+            ),
             favorite_count=video.favorite_count,
             popularity_score=video_popularity_score(video),
             categories=[

@@ -40,6 +40,7 @@ def make_video(*, owner_id=None, is_registered_only: bool = False) -> Video:
         duration_seconds=None,
         thumbnail_path=None,
         variants=[],
+        latest_processing_error=None,
         favorite_count=0,
         categories=[],
         tags=[],

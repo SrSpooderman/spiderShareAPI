@@ -1,4 +1,5 @@
 import json
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,70 +40,82 @@ class FfmpegVideoTranscoder(VideoTranscoder):
         low_geometry = self._low_geometry(original_geometry)
         variants_dir = self.root_path / "variants" / str(video_id)
         thumbnails_dir = self.root_path / "thumbnails" / str(video_id)
+        tmp_dir = self.root_path / "processing_tmp" / str(video_id)
+        shutil.rmtree(tmp_dir, ignore_errors=True)
         variants_dir.mkdir(parents=True, exist_ok=True)
         thumbnails_dir.mkdir(parents=True, exist_ok=True)
+        tmp_dir.mkdir(parents=True, exist_ok=True)
 
         av1_path = variants_dir / "original_av1.mp4"
         h264_path = variants_dir / "low_h264.mp4"
         thumbnail_path = thumbnails_dir / "thumbnail.jpg"
+        tmp_av1_path = tmp_dir / "original_av1.mp4"
+        tmp_h264_path = tmp_dir / "low_h264.mp4"
+        tmp_thumbnail_path = tmp_dir / "thumbnail.jpg"
 
-        self._run_ffmpeg(
-            [
-                "ffmpeg",
-                "-y",
-                "-i",
-                str(source.path),
-                "-vf",
-                self._scale_pad_filter(original_geometry),
-                "-c:v",
-                "libaom-av1",
-                "-crf",
-                "34",
-                "-b:v",
-                "0",
-                "-c:a",
-                "aac",
-                "-movflags",
-                "+faststart",
-                str(av1_path),
-            ]
-        )
-        self._run_ffmpeg(
-            [
-                "ffmpeg",
-                "-y",
-                "-i",
-                str(source.path),
-                "-vf",
-                self._scale_pad_filter(low_geometry),
-                "-c:v",
-                "libx264",
-                "-preset",
-                "veryfast",
-                "-crf",
-                "23",
-                "-c:a",
-                "aac",
-                "-movflags",
-                "+faststart",
-                str(h264_path),
-            ]
-        )
-        self._run_ffmpeg(
-            [
-                "ffmpeg",
-                "-y",
-                "-i",
-                str(source.path),
-                "-ss",
-                "00:00:01",
-                "-frames:v",
-                "1",
-                "-vf",
-                self._scale_pad_filter(low_geometry),
-                str(thumbnail_path),
-            ]
-        )
+        try:
+            self._run_ffmpeg(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(source.path),
+                    "-vf",
+                    self._scale_pad_filter(original_geometry),
+                    "-c:v",
+                    "libaom-av1",
+                    "-crf",
+                    "34",
+                    "-b:v",
+                    "0",
+                    "-c:a",
+                    "aac",
+                    "-movflags",
+                    "+faststart",
+                    str(tmp_av1_path),
+                ]
+            )
+            self._run_ffmpeg(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(source.path),
+                    "-vf",
+                    self._scale_pad_filter(low_geometry),
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "veryfast",
+                    "-crf",
+                    "23",
+                    "-c:a",
+                    "aac",
+                    "-movflags",
+                    "+faststart",
+                    str(tmp_h264_path),
+                ]
+            )
+            self._run_ffmpeg(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(source.path),
+                    "-ss",
+                    "00:00:01",
+                    "-frames:v",
+                    "1",
+                    "-vf",
+                    self._scale_pad_filter(low_geometry),
+                    str(tmp_thumbnail_path),
+                ]
+            )
+            tmp_av1_path.replace(av1_path)
+            tmp_h264_path.replace(h264_path)
+            tmp_thumbnail_path.replace(thumbnail_path)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
         return VideoProcessingResult(
             width=original_geometry.width,
