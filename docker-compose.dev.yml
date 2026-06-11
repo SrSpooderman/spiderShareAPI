@@ -47,6 +47,25 @@ services:
       spidershare_network:
     command: python -m app.workers.video_processing
 
+  backoffice:
+    build:
+      context: ./backoffice
+      target: development
+    container_name: spidershare_backoffice
+    restart: unless-stopped
+    environment:
+      VITE_API_BASE_URL: ${BACKOFFICE_API_BASE_URL:-http://localhost:8000}
+    ports:
+      - "${BACKOFFICE_PORT:-5173}:5173"
+    volumes:
+      - ./backoffice:/app
+      - backoffice_node_modules:/app/node_modules
+    depends_on:
+      api:
+        condition: service_started
+    networks:
+      spidershare_network:
+
   redis:
     image: redis:7-alpine
     container_name: spidershare_redis
@@ -90,6 +109,7 @@ services:
 
 volumes:
   mysql_data:
+  backoffice_node_modules:
 
 networks:
   spidershare_network:

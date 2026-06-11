@@ -32,6 +32,7 @@ La API incluye:
 - FFmpeg para transcodificacion y miniaturas.
 - python-jose para JWT.
 - bcrypt para passwords.
+- Backoffice React + Vite + TypeScript en `backoffice/`.
 - Pytest + HTTPX para tests.
 
 ## Arquitectura
@@ -75,6 +76,7 @@ app/
       jaimito_logging.py    Mensajes del worker Jaimito.
   workers/
     video_processing.py     Worker RQ de procesado de videos.
+backoffice/                  Frontend administrativo React/Vite.
 config/
   settings.py               Variables de entorno.
 migrations/
@@ -104,6 +106,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 Servicios en desarrollo:
 
 - API: `http://localhost:8000`
+- Backoffice: `http://localhost:5173`
 - Docs OpenAPI: `http://localhost:8000/docs`
 - MySQL: expuesto en `${MYSQL_PORT:-3306}`
 - Redis: expuesto en `${REDIS_PORT:-6379}`
@@ -127,6 +130,7 @@ curl http://localhost:8000/version
 
 - `api`: ejecuta migraciones, seed de super admin y arranca Uvicorn.
 - `worker`: ejecuta `python -m app.workers.video_processing`.
+- `backoffice`: sirve el panel administrativo React/Vite.
 - `redis`: cola RQ interna, sin puerto publicado en produccion.
 - `mysql`: base de datos con volumen persistente.
 - `video_storage`: volumen persistente para videos.
@@ -137,6 +141,7 @@ curl http://localhost:8000/version
 - Monta el codigo local en `/app`.
 - Arranca Uvicorn con `--reload`.
 - Publica Redis y MySQL para depuracion local.
+- Levanta el backoffice con Vite y hot reload.
 - Monta `./storage/videos`.
 
 Comandos utiles:
@@ -170,6 +175,9 @@ Variables principales:
 | `APP_DEBUG` | Flag de debug. |
 | `APP_HOST` | Host esperado para arranque local si se usa externamente. |
 | `APP_PORT` | Puerto publicado por Docker para la API. |
+| `CORS_ALLOWED_ORIGINS` | Lista JSON de origenes permitidos para frontends, incluido backoffice. |
+| `BACKOFFICE_PORT` | Puerto publicado por Docker para el backoffice. |
+| `BACKOFFICE_API_BASE_URL` | URL base usada por el backoffice para llamar a la API. |
 | `DATABASE_URL` | URL SQLAlchemy usada por app y Alembic. |
 | `MYSQL_HOST` | Host MySQL para compose/configuracion auxiliar. |
 | `MYSQL_PORT` | Puerto MySQL publicado en desarrollo. |
@@ -203,6 +211,9 @@ APP_VERSION=1.0.0
 APP_ENV=local
 APP_DEBUG=true
 APP_PORT=8000
+CORS_ALLOWED_ORIGINS=["http://localhost:5173"]
+BACKOFFICE_PORT=5173
+BACKOFFICE_API_BASE_URL=http://localhost:8000
 
 MYSQL_DATABASE=spidershare
 MYSQL_USER=spidershare
@@ -370,6 +381,21 @@ Parametros:
 | `POST` | `/videos/{video_id}/reactions` | Si | Crea o actualiza reaccion. |
 | `DELETE` | `/videos/{video_id}/reactions` | Si | Elimina reaccion del usuario. |
 
+### Admin / Backoffice
+
+| Metodo | Ruta | Auth | Descripcion |
+| --- | --- | --- | --- |
+| `GET` | `/admin/dashboard` | Admin | Resumen de videos, cola y servicios. |
+| `GET` | `/admin/videos` | Admin | Lista administrativa de videos con filtros. |
+| `GET` | `/admin/videos/{video_id}` | Admin | Detalle operativo de un video. |
+| `POST` | `/admin/videos/{video_id}/processing/retry` | Super admin | Limpia salidas y reencola procesado de un video no completo. |
+| `DELETE` | `/admin/videos/{video_id}` | Super admin | Borra un video desde backoffice. |
+| `GET` | `/admin/worker/events` | Admin | Eventos estructurados derivados del procesado. |
+| `GET` | `/admin/worker/logs` | Admin | Vista tipo consola generada desde `worker_events`. |
+| `GET` | `/admin/queue/jobs` | Admin | Jobs visibles en RQ. |
+| `GET` | `/admin/users` | Admin | Usuarios con conteo basico de videos. |
+| `GET` | `/admin/audit` | Admin | Registro de auditoria administrativa. |
+
 Filtros de `GET /videos`:
 
 - `title`: busqueda parcial.
@@ -511,6 +537,17 @@ El worker usa `worker=jaimito_worker`, rellena `job_id` y `video_id`, registra `
 - `event=jaimito.job.finished`
 - `event=jaimito.job.failed`
 - `event=jaimito.worker.shutting_down`
+
+Ademas, el worker persiste eventos operativos en `worker_events` para que el backoffice pueda mostrar timeline y logs:
+
+- arranque y apagado del worker
+- Redis listo
+- job recibido
+- procesado completado
+- procesado fallido
+- reintentos solicitados desde backoffice
+
+Las acciones sensibles del backoffice se registran en `admin_audit_entries`, incluyendo actor, accion, entidad afectada, resultado, metadata y fecha.
 
 ## Desarrollo Local sin Docker
 

@@ -3,6 +3,10 @@ services:
     networks:
       proxy_network:
 
+  backoffice:
+    networks:
+      proxy_network:
+
 networks:
   proxy_network:
     external: true
