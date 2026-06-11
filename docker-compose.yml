@@ -46,6 +46,24 @@ services:
       spidershare_network:
     command: python -m app.workers.video_processing
 
+  backoffice:
+    build:
+      context: ./backoffice
+      target: production
+      args:
+        VITE_API_BASE_URL: ${BACKOFFICE_API_BASE_URL:-http://localhost:8000}
+        VITE_USE_MOCKS: ${BACKOFFICE_USE_MOCKS:-true}
+    container_name: spidershare_backoffice
+    restart: unless-stopped
+    ports:
+      - "${BACKOFFICE_PORT:-5173}:5173"
+    depends_on:
+      api:
+        condition: service_started
+    networks:
+      spidershare_network:
+      proxy_network:
+
   redis:
     image: redis:7-alpine
     container_name: spidershare_redis

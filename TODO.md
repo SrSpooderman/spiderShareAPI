@@ -1,9 +1,53 @@
 # TODO
 ## Pendiente v2 / futuro
 
+- Backoffice sencillo:
+  - Objetivo inicial: crear un panel interno para operar videos, cola/worker y usuarios sin depender de consola, Docker logs o consultas manuales.
+  - Acceso y permisos:
+    - Pendiente: definir rutas bajo prefijo administrativo, por ejemplo `/admin/...`.
+    - Pendiente: proteger todo el backoffice con JWT.
+    - Pendiente: permitir lectura operativa a `admin` y `super_admin`.
+    - Pendiente: reservar acciones sensibles para `super_admin`, como reintentar procesado, borrar videos, limpiar jobs o cambiar roles.
+  - Dashboard operativo:
+    - Pendiente: endpoint resumen con conteos de videos por estado: `pending`, `processing`, `ready`, `failed`.
+    - Pendiente: mostrar ultimos videos subidos y ultimos videos fallidos.
+    - Pendiente: mostrar estado basico de dependencias: API, MySQL, Redis y cola RQ.
+    - Pendiente: mostrar numero de jobs pendientes, jobs activos y jobs fallidos si Redis/RQ lo permite.
+  - Gestion de videos:
+    - Pendiente: endpoint/listado admin de videos con filtros por estado, owner, titulo, fecha y visibilidad.
+    - Pendiente: detalle admin de video con metadata tecnica, propietario, variantes, thumbnail, estado y ultimo error de procesado.
+    - Pendiente: reutilizar el reintento de procesado para videos no completos desde el backoffice.
+    - Pendiente: permitir borrar videos desde backoffice solo a `super_admin`.
+    - Pendiente: documentar que el backoffice debe usar paginacion y no cargar todo el catalogo de golpe.
+  - Worker, cola y logs:
+    - Pendiente: crear tabla de eventos operativos, por ejemplo `worker_events` o `video_processing_events`.
+    - Pendiente: guardar eventos relevantes del worker: arranque, Redis listo, job recibido, procesado iniciado, procesado terminado, fallo, apagado y reintento manual.
+    - Pendiente: cada evento debe guardar `event_type`, `level`, `message`, `video_id`, `job_id`, `worker_name`, metadata JSON y `created_at`.
+    - Pendiente: endpoint admin para consultar eventos del worker con filtros por `video_id`, `job_id`, nivel, tipo de evento y rango de fechas.
+    - Pendiente: vista tipo timeline en el detalle del video usando eventos del worker y errores de procesado.
+    - Pendiente: decidir si tambien se quiere mostrar una vista `tail` de logs crudos; si se hace, que sea secundaria y no la fuente principal.
+  - Usuarios:
+    - Pendiente: listado admin de usuarios con filtros por username, rol y estado.
+    - Pendiente: detalle de usuario con sus videos recientes y conteos basicos.
+    - Pendiente: acciones de activar/desactivar usuario y cambio de rol respetando las reglas actuales.
+  - Auditoria de acciones administrativas:
+    - Pendiente: crear registro de acciones admin para saber quien hizo reintentos, borrados, cambios de usuario o limpiezas.
+    - Pendiente: guardar `actor_user_id`, accion, entidad afectada, metadata JSON, resultado y timestamp.
+  - Frontend del backoffice:
+    - Pendiente: decidir si el backoffice vive dentro de este repo o como frontend separado.
+    - Pendiente: pantalla de login o reutilizacion del login actual con token JWT.
+    - Pendiente: layout sencillo con secciones: Dashboard, Videos, Worker/Logs, Usuarios.
+    - Pendiente: tabla de videos con filtros, estado visible y acciones disponibles segun rol.
+    - Pendiente: detalle de video con timeline de worker, ultimo error y boton de reintento para `super_admin`.
+    - Pendiente: vista de logs/eventos del worker con busqueda y paginacion.
+  - Validacion y despliegue:
+    - Pendiente: tests HTTP de permisos del backoffice: anonimo bloqueado, `user` bloqueado, `admin` lectura, `super_admin` acciones sensibles.
+    - Pendiente: tests de endpoints de dashboard/listados usando fakes.
+    - Pendiente: actualizar README con rutas admin, permisos y flujo operativo.
+    - Pendiente: revisar Docker/Portainer para exponer el frontend o servirlo detras del proxy sin publicar herramientas internas por error.
 - Contador de visualizaciones.
 - Asociacion opcional con Steam/juegos.
 - Subida por chunks si el limite de `500 MB` o la red/proxy generan problemas reales.
-- Cola de trabajos para transcodificacion si el procesamiento sincrono se vuelve lento.
 - Limpieza periodica de archivos huerfanos o borrados fisicos fallidos.
+- Integracion con webhooks de Discord para avisos de subidas/procesado de videos y eventos administrativos.
 - Formula de popularidad mas rica si se agregan reacciones, visualizaciones o antiguedad.

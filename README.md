@@ -32,6 +32,7 @@ La API incluye:
 - FFmpeg para transcodificacion y miniaturas.
 - python-jose para JWT.
 - bcrypt para passwords.
+- Backoffice React + Vite + TypeScript en `backoffice/`.
 - Pytest + HTTPX para tests.
 
 ## Arquitectura
@@ -75,6 +76,7 @@ app/
       jaimito_logging.py    Mensajes del worker Jaimito.
   workers/
     video_processing.py     Worker RQ de procesado de videos.
+backoffice/                  Frontend administrativo React/Vite.
 config/
   settings.py               Variables de entorno.
 migrations/
@@ -104,6 +106,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 Servicios en desarrollo:
 
 - API: `http://localhost:8000`
+- Backoffice: `http://localhost:5173`
 - Docs OpenAPI: `http://localhost:8000/docs`
 - MySQL: expuesto en `${MYSQL_PORT:-3306}`
 - Redis: expuesto en `${REDIS_PORT:-6379}`
@@ -127,6 +130,7 @@ curl http://localhost:8000/version
 
 - `api`: ejecuta migraciones, seed de super admin y arranca Uvicorn.
 - `worker`: ejecuta `python -m app.workers.video_processing`.
+- `backoffice`: sirve el panel administrativo React/Vite.
 - `redis`: cola RQ interna, sin puerto publicado en produccion.
 - `mysql`: base de datos con volumen persistente.
 - `video_storage`: volumen persistente para videos.
@@ -137,6 +141,7 @@ curl http://localhost:8000/version
 - Monta el codigo local en `/app`.
 - Arranca Uvicorn con `--reload`.
 - Publica Redis y MySQL para depuracion local.
+- Levanta el backoffice con Vite y hot reload.
 - Monta `./storage/videos`.
 
 Comandos utiles:
@@ -170,6 +175,9 @@ Variables principales:
 | `APP_DEBUG` | Flag de debug. |
 | `APP_HOST` | Host esperado para arranque local si se usa externamente. |
 | `APP_PORT` | Puerto publicado por Docker para la API. |
+| `BACKOFFICE_PORT` | Puerto publicado por Docker para el backoffice. |
+| `BACKOFFICE_API_BASE_URL` | URL base usada por el backoffice para llamar a la API. |
+| `BACKOFFICE_USE_MOCKS` | Usa datos mock en el backoffice mientras no existan endpoints admin reales. |
 | `DATABASE_URL` | URL SQLAlchemy usada por app y Alembic. |
 | `MYSQL_HOST` | Host MySQL para compose/configuracion auxiliar. |
 | `MYSQL_PORT` | Puerto MySQL publicado en desarrollo. |
@@ -203,6 +211,9 @@ APP_VERSION=1.0.0
 APP_ENV=local
 APP_DEBUG=true
 APP_PORT=8000
+BACKOFFICE_PORT=5173
+BACKOFFICE_API_BASE_URL=http://localhost:8000
+BACKOFFICE_USE_MOCKS=true
 
 MYSQL_DATABASE=spidershare
 MYSQL_USER=spidershare
