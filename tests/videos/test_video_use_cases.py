@@ -228,6 +228,11 @@ def test_process_video_marks_video_failed_when_transcoding_errors(video_factory)
         FakeVideoTranscoder(error=RuntimeError("boom")),
     )
 
-    processed = process_video.execute(video.id)
+    processed = process_video.execute(video.id, job_id="job-1")
 
     assert processed.processing_status.value == "failed"
+    assert processed.latest_processing_error is not None
+    assert processed.latest_processing_error.attempt == 1
+    assert processed.latest_processing_error.error_type == "RuntimeError"
+    assert processed.latest_processing_error.error_message == "boom"
+    assert processed.latest_processing_error.job_id == "job-1"

@@ -19,10 +19,10 @@ class RqVideoProcessingQueue(VideoProcessingQueue):
             connection=self.connection,
         )
 
-    def enqueue(self, video_id: UUID) -> None:
+    def enqueue(self, video_id: UUID, *, force: bool = False) -> None:
         job_id = video_processing_job_id(video_id)
         existing_job = self.queue.fetch_job(job_id)
-        if existing_job is not None and existing_job.get_status() in {
+        if not force and existing_job is not None and existing_job.get_status() in {
             "queued",
             "started",
             "deferred",

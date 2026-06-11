@@ -9,6 +9,8 @@ from app.modules.videos.domain.video import (
     Video,
     VideoAspectRatio,
     VideoCategory,
+    VideoOwner,
+    VideoProcessingError,
     VideoProcessingStatus,
     VideoReaction,
     VideoTag,
@@ -37,6 +39,20 @@ class VideoTagResponse(BaseModel):
     @classmethod
     def from_domain(cls, tag: VideoTag) -> "VideoTagResponse":
         return cls(id=tag.id, name=tag.name)
+
+
+class VideoOwnerResponse(BaseModel):
+    id: UUID
+    username: str
+    display_name: str | None
+
+    @classmethod
+    def from_domain(cls, owner: VideoOwner) -> "VideoOwnerResponse":
+        return cls(
+            id=owner.id,
+            username=owner.username,
+            display_name=owner.display_name,
+        )
 
 
 class VideoReactionCountResponse(BaseModel):
@@ -90,15 +106,41 @@ class VideoVariantResponse(BaseModel):
         )
 
 
+class VideoProcessingErrorResponse(BaseModel):
+    id: UUID
+    video_id: UUID
+    attempt: int
+    error_type: str
+    error_message: str
+    job_id: str | None
+    duration_ms: float | None
+    created_at: datetime
+
+    @classmethod
+    def from_domain(cls, error: VideoProcessingError) -> "VideoProcessingErrorResponse":
+        return cls(
+            id=error.id,
+            video_id=error.video_id,
+            attempt=error.attempt,
+            error_type=error.error_type,
+            error_message=error.error_message,
+            job_id=error.job_id,
+            duration_ms=error.duration_ms,
+            created_at=error.created_at,
+        )
+
+
 class VideoSummaryResponse(BaseModel):
     id: UUID
     title: str
     description: str
     owner_id: UUID
+    owner: VideoOwnerResponse
     is_registered_only: bool
     edited: bool
     edited_at: datetime | None
     processing_status: VideoProcessingStatus
+    latest_processing_error: VideoProcessingErrorResponse | None
     favorite_count: int
     popularity_score: int
     categories: list[VideoCategoryResponse]
@@ -113,10 +155,23 @@ class VideoSummaryResponse(BaseModel):
             title=video.title,
             description=video.description,
             owner_id=video.owner_id,
+            owner=VideoOwnerResponse.from_domain(
+                video.owner
+                or VideoOwner(
+                    id=video.owner_id,
+                    username="-",
+                    display_name=None,
+                )
+            ),
             is_registered_only=video.is_registered_only,
             edited=video.edited,
             edited_at=video.edited_at,
             processing_status=video.processing_status,
+            latest_processing_error=(
+                VideoProcessingErrorResponse.from_domain(video.latest_processing_error)
+                if video.latest_processing_error is not None
+                else None
+            ),
             favorite_count=video.favorite_count,
             popularity_score=video_popularity_score(video),
             categories=[

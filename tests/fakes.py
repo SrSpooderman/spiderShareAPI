@@ -2,6 +2,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from uuid import UUID
+from uuid import uuid4
 
 from app.modules.steam.domain.steam_game import SteamGame, SteamGameCreate
 from app.modules.users.domain.user import User, UserCreate, UserRole
@@ -9,6 +10,7 @@ from app.modules.videos.domain.ports import VideoListFilters, VideoListResult
 from app.modules.videos.domain.video import (
     Video,
     VideoCreate,
+    VideoProcessingError,
     VideoProcessingResult,
     VideoProcessingStatus,
     VideoReaction,
@@ -152,6 +154,8 @@ class FakeVideoRepository:
         self.created: list[VideoCreate] = []
         self.updated: list[tuple[UUID, dict]] = []
         self.deleted: list[UUID] = []
+        self.reset: list[UUID] = []
+        self.processing_errors: dict[UUID, list[VideoProcessingError]] = {}
         self.favorites: set[tuple[UUID, UUID]] = set()
         self.reactions: dict[tuple[UUID, UUID, str], VideoReaction] = {}
 
@@ -215,6 +219,7 @@ class FakeVideoRepository:
             make_video(
                 id=video.id,
                 owner_id=video.owner_id,
+                owner_username="test-user",
                 title=video.title,
                 description=video.description,
                 original_filename=video.original_filename,
@@ -272,14 +277,54 @@ class FakeVideoRepository:
         self.videos[video_id] = updated_video
         return updated_video
 
-    def mark_failed(self, video_id: UUID) -> Video | None:
+    def mark_failed(
+        self,
+        video_id: UUID,
+        *,
+        error_type: str,
+        error_message: str,
+        job_id: str | None,
+        duration_ms: float | None,
+    ) -> Video | None:
         video = self.videos.get(video_id)
         if video is None:
             return None
 
+        errors = self.processing_errors.setdefault(video_id, [])
+        processing_error = VideoProcessingError(
+            id=uuid4(),
+            video_id=video_id,
+            attempt=len(errors) + 1,
+            error_type=error_type,
+            error_message=error_message,
+            job_id=job_id,
+            duration_ms=duration_ms,
+            created_at=utc_now(),
+        )
+        errors.append(processing_error)
         updated_video = replace(
             video,
             processing_status=VideoProcessingStatus.FAILED,
+            latest_processing_error=processing_error,
+        )
+        self.videos[video_id] = updated_video
+        return updated_video
+
+    def reset_processing(self, video_id: UUID) -> Video | None:
+        video = self.videos.get(video_id)
+        if video is None:
+            return None
+
+        self.reset.append(video_id)
+        updated_video = replace(
+            video,
+            processing_status=VideoProcessingStatus.PENDING,
+            width=None,
+            height=None,
+            aspect_ratio=None,
+            duration_seconds=None,
+            thumbnail_path=None,
+            variants=[],
         )
         self.videos[video_id] = updated_video
         return updated_video
@@ -436,6 +481,7 @@ class FakeVideoStorage:
         self.saved: list[dict] = []
         self.deleted: list[UUID] = []
         self.deleted_all: list[UUID] = []
+        self.deleted_processing_outputs: list[UUID] = []
         self.original_paths: dict[UUID, Path] = {}
         self.variant_paths: dict[tuple[UUID, str], Path] = {}
         self.thumbnail_paths: dict[UUID, Path] = {}
@@ -467,6 +513,11 @@ class FakeVideoStorage:
         if self.delete_error is not None:
             raise self.delete_error
         self.deleted_all.append(video_id)
+
+    def delete_processing_outputs(self, video_id: UUID) -> None:
+        if self.delete_error is not None:
+            raise self.delete_error
+        self.deleted_processing_outputs.append(video_id)
 
     def get_original_path(self, video_id: UUID) -> Path | None:
         return self.original_paths.get(video_id)
@@ -532,10 +583,12 @@ class FakeVideoProcessingQueue:
     def __init__(self, error: Exception | None = None) -> None:
         self.error = error
         self.enqueued: list[UUID] = []
+        self.force_flags: list[bool] = []
 
-    def enqueue(self, video_id: UUID) -> None:
+    def enqueue(self, video_id: UUID, *, force: bool = False) -> None:
         if self.error is not None:
             raise self.error
+        self.force_flags.append(force)
         self.enqueued.append(video_id)
 
 

@@ -6,6 +6,7 @@ import pytest
 from app.modules.users.domain.user import UserRole
 from app.modules.videos.domain.video import (
     Video,
+    VideoOwner,
     VideoProcessingStatus,
     can_delete_video,
     can_edit_video,
@@ -17,9 +18,15 @@ from tests.factories import utc_now
 
 def make_video(*, owner_id=None, is_registered_only: bool = False) -> Video:
     now = utc_now()
+    resolved_owner_id = owner_id or uuid4()
     return Video(
         id=uuid4(),
-        owner_id=owner_id or uuid4(),
+        owner_id=resolved_owner_id,
+        owner=VideoOwner(
+            id=resolved_owner_id,
+            username="owner",
+            display_name=None,
+        ),
         title="Clip",
         description="Context",
         original_filename="clip.mp4",
@@ -33,6 +40,7 @@ def make_video(*, owner_id=None, is_registered_only: bool = False) -> Video:
         duration_seconds=None,
         thumbnail_path=None,
         variants=[],
+        latest_processing_error=None,
         favorite_count=0,
         categories=[],
         tags=[],

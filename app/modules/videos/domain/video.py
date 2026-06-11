@@ -26,6 +26,13 @@ class VideoVariantType(str, Enum):
 
 
 @dataclass
+class VideoOwner:
+    id: UUID
+    username: str
+    display_name: str | None
+
+
+@dataclass
 class VideoCategory:
     id: UUID
     name: str
@@ -74,6 +81,18 @@ class VideoVariant:
     created_at: datetime
 
 
+@dataclass
+class VideoProcessingError:
+    id: UUID
+    video_id: UUID
+    attempt: int
+    error_type: str
+    error_message: str
+    job_id: str | None
+    duration_ms: float | None
+    created_at: datetime
+
+
 @dataclass(frozen=True)
 class VideoVariantCreate:
     variant_type: VideoVariantType
@@ -112,6 +131,7 @@ class VideoCreate:
 class Video:
     id: UUID
     owner_id: UUID
+    owner: VideoOwner | None
     title: str
     description: str
     original_filename: str
@@ -125,6 +145,7 @@ class Video:
     duration_seconds: float | None
     thumbnail_path: str | None
     variants: list[VideoVariant]
+    latest_processing_error: VideoProcessingError | None
     favorite_count: int
     categories: list[VideoCategory]
     tags: list[VideoTag]
