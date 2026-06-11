@@ -175,6 +175,7 @@ Variables principales:
 | `APP_DEBUG` | Flag de debug. |
 | `APP_HOST` | Host esperado para arranque local si se usa externamente. |
 | `APP_PORT` | Puerto publicado por Docker para la API. |
+| `CORS_ALLOWED_ORIGINS` | Lista JSON de origenes permitidos para frontends, incluido backoffice. |
 | `BACKOFFICE_PORT` | Puerto publicado por Docker para el backoffice. |
 | `BACKOFFICE_API_BASE_URL` | URL base usada por el backoffice para llamar a la API. |
 | `BACKOFFICE_USE_MOCKS` | Usa datos mock en el backoffice mientras no existan endpoints admin reales. |
@@ -211,6 +212,7 @@ APP_VERSION=1.0.0
 APP_ENV=local
 APP_DEBUG=true
 APP_PORT=8000
+CORS_ALLOWED_ORIGINS=["http://localhost:5173"]
 BACKOFFICE_PORT=5173
 BACKOFFICE_API_BASE_URL=http://localhost:8000
 BACKOFFICE_USE_MOCKS=true
@@ -380,6 +382,21 @@ Parametros:
 | `GET` | `/videos/{video_id}/reactions` | Publico | Conteos de reacciones visibles. |
 | `POST` | `/videos/{video_id}/reactions` | Si | Crea o actualiza reaccion. |
 | `DELETE` | `/videos/{video_id}/reactions` | Si | Elimina reaccion del usuario. |
+
+### Admin / Backoffice
+
+| Metodo | Ruta | Auth | Descripcion |
+| --- | --- | --- | --- |
+| `GET` | `/admin/dashboard` | Admin | Resumen de videos, cola y servicios. |
+| `GET` | `/admin/videos` | Admin | Lista administrativa de videos con filtros. |
+| `GET` | `/admin/videos/{video_id}` | Admin | Detalle operativo de un video. |
+| `POST` | `/admin/videos/{video_id}/processing/retry` | Super admin | Limpia salidas y reencola procesado de un video no completo. |
+| `DELETE` | `/admin/videos/{video_id}` | Super admin | Borra un video desde backoffice. |
+| `GET` | `/admin/worker/events` | Admin | Eventos estructurados derivados del procesado. |
+| `GET` | `/admin/worker/logs` | Admin | Placeholder para logs crudos del worker si se configura fuente. |
+| `GET` | `/admin/queue/jobs` | Admin | Jobs visibles en RQ. |
+| `GET` | `/admin/users` | Admin | Usuarios con conteo basico de videos. |
+| `GET` | `/admin/audit` | Admin | Registro de auditoria; por ahora vacio hasta crear tabla dedicada. |
 
 Filtros de `GET /videos`:
 

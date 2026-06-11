@@ -51,7 +51,7 @@ export const backofficeService = {
       await wait();
       return;
     }
-    return apiRequest<void>(`/videos/${videoId}/processing/retry`, {
+    return apiRequest<void>(`/admin/videos/${videoId}/processing/retry`, {
       method: "POST"
     });
   },
