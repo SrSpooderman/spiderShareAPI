@@ -199,7 +199,7 @@ def test_upload_video_saves_file_and_creates_video(user_factory, video_storage) 
 
 
 @pytest.mark.unit
-def test_process_video_marks_video_ready_with_variants(
+def test_process_video_marks_video_ready_with_low_variant(
     video_factory,
     video_transcoder,
 ) -> None:
@@ -213,7 +213,7 @@ def test_process_video_marks_video_ready_with_variants(
     assert processed.width == 1920
     assert processed.height == 1080
     assert processed.duration_seconds == 12.5
-    assert [variant.codec for variant in processed.variants] == ["av1", "h264"]
+    assert [variant.codec for variant in processed.variants] == ["h264"]
     assert video_transcoder.transcoded == [video.id]
 
 

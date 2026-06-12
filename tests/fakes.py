@@ -556,16 +556,6 @@ class FakeVideoTranscoder:
             thumbnail_path=f"thumbnails/{video_id}/thumbnail.jpg",
             variants=[
                 VideoVariantCreate(
-                    variant_type=VideoVariantType.ORIGINAL_AV1,
-                    codec="av1",
-                    container="mp4",
-                    width=1920,
-                    height=1080,
-                    bitrate_kbps=None,
-                    size_bytes=2048,
-                    path=f"variants/{video_id}/original_av1.mp4",
-                ),
-                VideoVariantCreate(
                     variant_type=VideoVariantType.LOW_H264,
                     codec="h264",
                     container="mp4",

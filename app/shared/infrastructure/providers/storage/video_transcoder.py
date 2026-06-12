@@ -46,35 +46,12 @@ class FfmpegVideoTranscoder(VideoTranscoder):
         thumbnails_dir.mkdir(parents=True, exist_ok=True)
         tmp_dir.mkdir(parents=True, exist_ok=True)
 
-        av1_path = variants_dir / "original_av1.mp4"
         h264_path = variants_dir / "low_h264.mp4"
         thumbnail_path = thumbnails_dir / "thumbnail.jpg"
-        tmp_av1_path = tmp_dir / "original_av1.mp4"
         tmp_h264_path = tmp_dir / "low_h264.mp4"
         tmp_thumbnail_path = tmp_dir / "thumbnail.jpg"
 
         try:
-            self._run_ffmpeg(
-                [
-                    "ffmpeg",
-                    "-y",
-                    "-i",
-                    str(source.path),
-                    "-vf",
-                    self._scale_pad_filter(original_geometry),
-                    "-c:v",
-                    "libaom-av1",
-                    "-crf",
-                    "34",
-                    "-b:v",
-                    "0",
-                    "-c:a",
-                    "aac",
-                    "-movflags",
-                    "+faststart",
-                    str(tmp_av1_path),
-                ]
-            )
             self._run_ffmpeg(
                 [
                     "ffmpeg",
@@ -111,7 +88,6 @@ class FfmpegVideoTranscoder(VideoTranscoder):
                     str(tmp_thumbnail_path),
                 ]
             )
-            tmp_av1_path.replace(av1_path)
             tmp_h264_path.replace(h264_path)
             tmp_thumbnail_path.replace(thumbnail_path)
         finally:
@@ -124,13 +100,6 @@ class FfmpegVideoTranscoder(VideoTranscoder):
             duration_seconds=source.duration_seconds,
             thumbnail_path=self._relative_path(thumbnail_path),
             variants=[
-                self._variant(
-                    video_id=video_id,
-                    variant_type=VideoVariantType.ORIGINAL_AV1,
-                    codec="av1",
-                    path=av1_path,
-                    geometry=original_geometry,
-                ),
                 self._variant(
                     video_id=video_id,
                     variant_type=VideoVariantType.LOW_H264,
