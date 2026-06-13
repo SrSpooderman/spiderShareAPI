@@ -6,7 +6,6 @@ class Settings(BaseSettings):
     app_version: str = "1.0.0"
     app_env: str = "local"
     app_debug: bool = True
-    cors_allowed_origins: list[str] = ["http://localhost:5173"]
     database_url: str
     video_storage_path: str = "/app/storage/videos"
     secret_key: str
