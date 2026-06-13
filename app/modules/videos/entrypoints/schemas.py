@@ -134,7 +134,6 @@ class VideoSummaryResponse(BaseModel):
     id: UUID
     title: str
     description: str
-    owner_id: UUID
     owner: VideoOwnerResponse
     is_registered_only: bool
     edited: bool
@@ -154,7 +153,6 @@ class VideoSummaryResponse(BaseModel):
             id=video.id,
             title=video.title,
             description=video.description,
-            owner_id=video.owner_id,
             owner=VideoOwnerResponse.from_domain(
                 video.owner
                 or VideoOwner(
