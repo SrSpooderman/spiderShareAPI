@@ -175,7 +175,6 @@ Variables principales:
 | `APP_DEBUG` | Flag de debug. |
 | `APP_HOST` | Host esperado para arranque local si se usa externamente. |
 | `APP_PORT` | Puerto publicado por Docker para la API. |
-| `CORS_ALLOWED_ORIGINS` | Lista JSON de origenes permitidos para frontends, incluido backoffice. |
 | `BACKOFFICE_PORT` | Puerto publicado por Docker para el backoffice. |
 | `BACKOFFICE_API_BASE_URL` | URL base usada por el backoffice para llamar a la API. |
 | `DATABASE_URL` | URL SQLAlchemy usada por app y Alembic. |
@@ -211,7 +210,6 @@ APP_VERSION=1.0.0
 APP_ENV=local
 APP_DEBUG=true
 APP_PORT=8000
-CORS_ALLOWED_ORIGINS=["http://localhost:5173"]
 BACKOFFICE_PORT=5173
 BACKOFFICE_API_BASE_URL=http://localhost:8000
 
