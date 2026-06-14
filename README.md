@@ -201,6 +201,7 @@ Variables principales:
 | `VIDEO_PROCESSING_MAX_ATTEMPTS` | Reintentos maximos por job. |
 | `VIDEO_PROCESSING_JOB_TIMEOUT_SECONDS` | Timeout maximo de cada job. |
 | `PROXY_NETWORK_NAME` | Nombre de red externa para proxy inverso. |
+| `API_PROXY_NETWORK_ALIAS` | Alias DNS de la API dentro de la red externa del proxy. |
 
 Ejemplo minimo:
 
@@ -212,6 +213,8 @@ APP_DEBUG=true
 APP_PORT=8000
 BACKOFFICE_PORT=5173
 BACKOFFICE_API_BASE_URL=http://localhost:8000
+PROXY_NETWORK_NAME=caddy
+API_PROXY_NETWORK_ALIAS=spidershare-api
 
 MYSQL_DATABASE=spidershare
 MYSQL_USER=spidershare
@@ -623,10 +626,11 @@ Si `REDIS_INTEGRATION_URL` no esta configurada, el test se salta.
 
 ## CI/CD
 
-El changelog menciona despliegue mediante workflow GitHub Actions y webhook de Portainer. Si se usa ese flujo, el secreto esperado es:
+El changelog menciona despliegue mediante workflow GitHub Actions y webhook de Portainer. Si se usa ese flujo, los secretos esperados son:
 
 ```text
 PORTAINER_WEBHOOK_URL
+PORTAINER_API_TOKEN
 ```
 
 Antes de desplegar:
