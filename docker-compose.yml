@@ -20,6 +20,8 @@ services:
     networks:
       spidershare_network:
       proxy_network:
+        aliases:
+          - ${API_PROXY_NETWORK_ALIAS:-spidershare-api}
     command: >
       sh -c "alembic -c /app/alembic.ini upgrade head &&
       python -m app.bootstrap.seed_super_admin &&
@@ -62,6 +64,8 @@ services:
     networks:
       spidershare_network:
       proxy_network:
+        aliases:
+          - ${API_PROXY_NETWORK_ALIAS:-spidershare-backoffice}
 
   redis:
     image: redis:7-alpine

@@ -2,10 +2,14 @@ services:
   api:
     networks:
       proxy_network:
+        aliases:
+          - ${API_PROXY_NETWORK_ALIAS:-spidershare-api}
 
   backoffice:
     networks:
       proxy_network:
+        aliases:
+          - ${API_PROXY_NETWORK_ALIAS:-spidershare-backoffice}
 
 networks:
   proxy_network:
