@@ -12,7 +12,7 @@ services:
       - "${APP_PORT:-8000}:8000"
     volumes:
       - ./:/app
-      - ./storage/videos:${VIDEO_STORAGE_PATH:-/app/storage/videos}
+      - ./storage/videos:/app/storage/videos
     depends_on:
       mysql:
         condition: service_healthy
@@ -37,7 +37,7 @@ services:
         required: false
     volumes:
       - ./:/app
-      - ./storage/videos:${VIDEO_STORAGE_PATH:-/app/storage/videos}
+      - ./storage/videos:/app/storage/videos
     depends_on:
       mysql:
         condition: service_healthy
