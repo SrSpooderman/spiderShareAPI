@@ -202,6 +202,7 @@ Variables principales:
 | `VIDEO_PROCESSING_JOB_TIMEOUT_SECONDS` | Timeout maximo de cada job. |
 | `PROXY_NETWORK_NAME` | Nombre de red externa para proxy inverso. |
 | `API_PROXY_NETWORK_ALIAS` | Alias DNS de la API dentro de la red externa del proxy. |
+| `BACKOFFICE_PROXY_NETWORK_ALIAS` | Alias DNS del backoffice dentro de la red externa del proxy. |
 
 Ejemplo minimo:
 
@@ -215,6 +216,7 @@ BACKOFFICE_PORT=5173
 BACKOFFICE_API_BASE_URL=http://localhost:8000
 PROXY_NETWORK_NAME=caddy
 API_PROXY_NETWORK_ALIAS=spidershare-api
+BACKOFFICE_PROXY_NETWORK_ALIAS=spidershare-backoffice
 
 MYSQL_DATABASE=spidershare
 MYSQL_USER=spidershare
