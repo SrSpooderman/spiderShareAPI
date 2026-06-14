@@ -117,7 +117,7 @@ def test_upload_video_creates_video_and_stores_original(
     assert response.status_code == 201
     body = response.json()
     assert body["title"] == "Boss clip"
-    assert body["owner_id"] == str(user.id)
+    assert "owner_id" not in body
     assert body["owner"] == {
         "id": str(user.id),
         "username": "alice",
