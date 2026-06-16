@@ -184,6 +184,8 @@ API_DOMAIN=api.tudominio.com
 BACKOFFICE_DOMAIN=admin.tudominio.com
 LETSENCRYPT_EMAIL=admin@tudominio.com
 BACKOFFICE_PROXY_API_BASE_URL=/api
+NGINX_HTTP_PORT=80
+NGINX_HTTPS_PORT=443
 NGINX_CLIENT_MAX_BODY_SIZE=600m
 ```
 
@@ -249,6 +251,8 @@ Variables principales:
 | `API_DOMAIN` | Dominio publico HTTPS de la API cuando se usa Nginx. |
 | `BACKOFFICE_DOMAIN` | Dominio publico HTTPS del backoffice cuando se usa Nginx. |
 | `LETSENCRYPT_EMAIL` | Email para emitir certificados Let's Encrypt. |
+| `NGINX_HTTP_PORT` | Puerto HTTP publicado por Nginx en produccion. Por defecto `80`. |
+| `NGINX_HTTPS_PORT` | Puerto HTTPS publicado por Nginx en produccion. Por defecto `443`. |
 | `NGINX_CLIENT_MAX_BODY_SIZE` | Limite de subida aceptado por Nginx. |
 | `DATABASE_URL` | URL SQLAlchemy usada por app y Alembic. |
 | `MYSQL_HOST` | Host MySQL para compose/configuracion auxiliar. |
@@ -288,6 +292,8 @@ BACKOFFICE_PROXY_API_BASE_URL=/api
 API_DOMAIN=api.example.com
 BACKOFFICE_DOMAIN=admin.example.com
 LETSENCRYPT_EMAIL=admin@example.com
+NGINX_HTTP_PORT=80
+NGINX_HTTPS_PORT=443
 NGINX_CLIENT_MAX_BODY_SIZE=600m
 
 MYSQL_DATABASE=spidershare
