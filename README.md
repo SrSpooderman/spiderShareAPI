@@ -100,7 +100,7 @@ Para desarrollo:
 
 ```bash
 cp .env.example .env
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+docker compose -f docker-compose.dev.yml up --build
 ```
 
 Servicios en desarrollo:
@@ -108,8 +108,8 @@ Servicios en desarrollo:
 - API: `http://localhost:8000`
 - Backoffice: `http://localhost:5173`
 - Docs OpenAPI: `http://localhost:8000/docs`
-- MySQL: expuesto en `${MYSQL_PORT:-3306}`
-- Redis: expuesto en `${REDIS_PORT:-6379}`
+- MySQL: interno en la red Docker.
+- Redis: interno en la red Docker.
 - Worker: sin puerto, consume jobs desde Redis.
 
 Healthcheck:
@@ -126,40 +126,108 @@ curl http://localhost:8000/version
 
 ## Docker y Servicios
 
-`docker-compose.yml` define la topologia base:
+`docker-compose.yml` define produccion:
 
 - `api`: ejecuta migraciones, seed de super admin y arranca Uvicorn.
 - `worker`: ejecuta `python -m app.workers.video_processing`.
-- `backoffice`: sirve el panel administrativo React/Vite.
+- `backoffice`: sirve el panel administrativo React ya compilado.
+- `nginx`: reverse proxy publico con HTTPS para API y backoffice.
+- `certbot`: emision y renovacion de certificados Let's Encrypt.
 - `redis`: cola RQ interna, sin puerto publicado en produccion.
 - `mysql`: base de datos con volumen persistente.
 - `video_storage`: volumen persistente para videos.
-- `proxy_network`: red externa para proxy inverso si se usa Portainer/Caddy.
 
-`docker-compose.dev.yml` sobreescribe desarrollo:
+`docker-compose.dev.yml` define desarrollo:
 
 - Monta el codigo local en `/app`.
 - Arranca Uvicorn con `--reload`.
-- Publica Redis y MySQL para depuracion local.
+- Publica API y backoffice solo en `127.0.0.1`.
+- Mantiene MySQL y Redis internos a la red Docker.
 - Levanta el backoffice con Vite y hot reload.
 - Monta `./storage/videos`.
 
 Comandos utiles:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f api
-docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f worker
-docker compose -f docker-compose.yml -f docker-compose.dev.yml exec api sh
-docker compose -f docker-compose.yml -f docker-compose.dev.yml down
+docker compose -f docker-compose.dev.yml logs -f api
+docker compose -f docker-compose.dev.yml logs -f worker
+docker compose -f docker-compose.dev.yml exec api sh
+docker compose -f docker-compose.dev.yml down
 ```
 
-Produccion/Portainer:
+Produccion:
 
 ```bash
 docker compose up --build -d
 ```
 
-En produccion revisa que exista la red externa configurada con `PROXY_NETWORK_NAME` si usas el compose base tal cual.
+## Reverse Proxy HTTPS con Nginx
+
+Produccion incluye Nginx como reverse proxy en `docker-compose.yml`. Su configuracion vive en `deploy/nginx/nginx.conf`.
+
+La topologia queda asi:
+
+```text
+https://api.tudominio.com       -> nginx -> api:8000
+https://admin.tudominio.com     -> nginx -> backoffice:5173
+https://admin.tudominio.com/api -> nginx -> api:8000
+```
+
+Antes de levantarlo en produccion:
+
+1. Crea registros DNS `A` para `API_DOMAIN` y `BACKOFFICE_DOMAIN` apuntando a la IP publica del servidor.
+2. Abre los puertos `80` y `443` en firewall/proveedor.
+3. Configura `.env` o `stack.env` con tus dominios reales:
+
+```env
+API_DOMAIN=api.tudominio.com
+BACKOFFICE_DOMAIN=admin.tudominio.com
+LETSENCRYPT_EMAIL=admin@tudominio.com
+BACKOFFICE_PROXY_API_BASE_URL=/api
+NGINX_CLIENT_MAX_BODY_SIZE=600m
+```
+
+Para emitir certificados por primera vez, levanta el Nginx temporal de bootstrap. Solo sirve HTTP y la carpeta de challenges de Let's Encrypt:
+
+```bash
+docker compose --profile bootstrap up -d nginx-bootstrap
+```
+
+Despues emite un certificado para cada dominio:
+
+```bash
+docker compose run --rm certbot certonly \
+  --webroot \
+  -w /var/www/certbot \
+  -d api.tudominio.com \
+  --email admin@tudominio.com \
+  --agree-tos \
+  --no-eff-email
+
+docker compose run --rm certbot certonly \
+  --webroot \
+  -w /var/www/certbot \
+  -d admin.tudominio.com \
+  --email admin@tudominio.com \
+  --agree-tos \
+  --no-eff-email
+```
+
+Para cambiar del bootstrap al proxy HTTPS real:
+
+```bash
+docker compose --profile bootstrap stop nginx-bootstrap
+docker compose up --build -d
+```
+
+Renovacion con el servicio incluido:
+
+```bash
+docker compose run --rm certbot renew --webroot -w /var/www/certbot
+docker compose exec nginx nginx -s reload
+```
+
+En produccion solo Nginx publica puertos al exterior. API, backoffice, MySQL y Redis quedan internos a la red Docker.
 
 ## Variables de Entorno
 
@@ -174,12 +242,16 @@ Variables principales:
 | `APP_ENV` | Entorno logico. `local`, `dev` o `development` activan logging DEBUG. |
 | `APP_DEBUG` | Flag de debug. |
 | `APP_HOST` | Host esperado para arranque local si se usa externamente. |
-| `APP_PORT` | Puerto publicado por Docker para la API. |
-| `BACKOFFICE_PORT` | Puerto publicado por Docker para el backoffice. |
+| `APP_PORT` | Puerto local publicado por Docker para la API. |
+| `BACKOFFICE_PORT` | Puerto local publicado por Docker para el backoffice. |
 | `BACKOFFICE_API_BASE_URL` | URL base usada por el backoffice para llamar a la API. |
+| `BACKOFFICE_PROXY_API_BASE_URL` | URL base del backoffice cuando se compila para Nginx. Por defecto `/api`. |
+| `API_DOMAIN` | Dominio publico HTTPS de la API cuando se usa Nginx. |
+| `BACKOFFICE_DOMAIN` | Dominio publico HTTPS del backoffice cuando se usa Nginx. |
+| `LETSENCRYPT_EMAIL` | Email para emitir certificados Let's Encrypt. |
+| `NGINX_CLIENT_MAX_BODY_SIZE` | Limite de subida aceptado por Nginx. |
 | `DATABASE_URL` | URL SQLAlchemy usada por app y Alembic. |
 | `MYSQL_HOST` | Host MySQL para compose/configuracion auxiliar. |
-| `MYSQL_PORT` | Puerto MySQL publicado en desarrollo. |
 | `MYSQL_DATABASE` | Base de datos MySQL. |
 | `MYSQL_USER` | Usuario MySQL. |
 | `MYSQL_PASSWORD` | Password MySQL. |
@@ -200,9 +272,6 @@ Variables principales:
 | `VIDEO_PROCESSING_QUEUE_NAME` | Nombre de la cola RQ. |
 | `VIDEO_PROCESSING_MAX_ATTEMPTS` | Reintentos maximos por job. |
 | `VIDEO_PROCESSING_JOB_TIMEOUT_SECONDS` | Timeout maximo de cada job. |
-| `PROXY_NETWORK_NAME` | Nombre de red externa para proxy inverso. |
-| `API_PROXY_NETWORK_ALIAS` | Alias DNS de la API dentro de la red externa del proxy. |
-| `BACKOFFICE_PROXY_NETWORK_ALIAS` | Alias DNS del backoffice dentro de la red externa del proxy. |
 
 Ejemplo minimo:
 
@@ -214,9 +283,12 @@ APP_DEBUG=true
 APP_PORT=8000
 BACKOFFICE_PORT=5173
 BACKOFFICE_API_BASE_URL=http://localhost:8000
-PROXY_NETWORK_NAME=caddy
-API_PROXY_NETWORK_ALIAS=spidershare-api
-BACKOFFICE_PROXY_NETWORK_ALIAS=spidershare-backoffice
+BACKOFFICE_PROXY_API_BASE_URL=/api
+
+API_DOMAIN=api.example.com
+BACKOFFICE_DOMAIN=admin.example.com
+LETSENCRYPT_EMAIL=admin@example.com
+NGINX_CLIENT_MAX_BODY_SIZE=600m
 
 MYSQL_DATABASE=spidershare
 MYSQL_USER=spidershare
@@ -260,19 +332,19 @@ python -m app.bootstrap.seed_super_admin
 Crear una migracion:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml exec api alembic revision --autogenerate -m "describe change"
+docker compose -f docker-compose.dev.yml exec api alembic revision --autogenerate -m "describe change"
 ```
 
 Aplicar migraciones:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml exec api alembic upgrade head
+docker compose -f docker-compose.dev.yml exec api alembic upgrade head
 ```
 
 Ver historial:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml exec api alembic history
+docker compose -f docker-compose.dev.yml exec api alembic history
 ```
 
 Migraciones actuales importantes:
@@ -469,13 +541,13 @@ El worker debe compartir el mismo volumen de videos que la API.
 Ver logs del worker:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f worker
+docker compose -f docker-compose.dev.yml logs -f worker
 ```
 
 Reejecutar worker manualmente dentro del stack:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml exec worker python -m app.workers.video_processing
+docker compose -f docker-compose.dev.yml exec worker python -m app.workers.video_processing
 ```
 
 Reintentar procesado como super admin:
@@ -639,7 +711,7 @@ Antes de desplegar:
 
 ```bash
 pytest -m "unit or http"
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+docker compose -f docker-compose.dev.yml up --build
 ```
 
 ## Permisos Resumidos
