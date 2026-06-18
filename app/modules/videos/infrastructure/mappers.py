@@ -4,6 +4,7 @@ from app.modules.videos.domain.video import (
     Video,
     VideoAspectRatio,
     VideoCategory,
+    VideoCategorySource,
     VideoCreate,
     VideoFavorite,
     VideoOwner,
@@ -94,6 +95,11 @@ def video_category_model_to_domain(model: VideoCategoryModel) -> VideoCategory:
     return VideoCategory(
         id=UUID(model.id),
         name=model.name,
+        source=VideoCategorySource(model.source or VideoCategorySource.CUSTOM.value),
+        steam_appid=model.steam_appid,
+        steamgriddb_game_id=model.steamgriddb_game_id,
+        thumbnail_vertical_url=model.thumbnail_vertical_url,
+        thumbnail_horizontal_url=model.thumbnail_horizontal_url,
         created_at=model.created_at,
         updated_at=model.updated_at,
     )

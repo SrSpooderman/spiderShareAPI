@@ -2,12 +2,15 @@ import pytest
 
 from app.modules.auth.wiring import get_current_user, get_optional_current_user
 from app.modules.videos.wiring import (
+    get_video_category_repository,
     get_video_processing_queue,
     get_video_repository,
     get_video_storage,
 )
+from app.modules.steam.wiring import get_steamgriddb_client
 from app.modules.videos.domain.video import VideoProcessingStatus
 from tests.factories import make_video_category, make_video_tag, make_video_variant
+from tests.fakes import FakeSteamGridDbClient
 
 
 @pytest.mark.http
@@ -163,6 +166,140 @@ def test_upload_video_allows_missing_description(
     assert response.status_code == 201
     assert response.json()["description"] == ""
     assert video_processing_queue.enqueued == [video_repository.created[0].id]
+
+
+@pytest.mark.http
+def test_list_and_create_custom_video_categories(
+    app,
+    client,
+    user_factory,
+    video_category_repository,
+) -> None:
+    admin = user_factory(role="admin")
+    video_category_repository.add(make_video_category(name="Existing"))
+    app.dependency_overrides[get_video_category_repository] = (
+        lambda: video_category_repository
+    )
+    app.dependency_overrides[get_current_user] = lambda: admin
+
+    response = client.get("/video-categories")
+
+    assert response.status_code == 200
+    assert response.json()[0]["name"] == "Existing"
+    assert response.json()[0]["source"] == "custom"
+
+    response = client.post(
+        "/video-categories",
+        json={
+            "name": "Indie",
+            "thumbnail_vertical_url": "https://cdn.example.com/indie-v.jpg",
+            "thumbnail_horizontal_url": "https://cdn.example.com/indie-h.jpg",
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["name"] == "Indie"
+    assert body["source"] == "custom"
+    assert body["steam_appid"] is None
+    assert body["thumbnail_vertical_url"] == "https://cdn.example.com/indie-v.jpg"
+    assert video_category_repository.created[0].name == "Indie"
+
+
+@pytest.mark.http
+def test_search_steamgriddb_games_for_video_categories(
+    app,
+    client,
+    user_factory,
+    video_category_repository,
+) -> None:
+    admin = user_factory(role="admin")
+    steamgriddb_client = FakeSteamGridDbClient(
+        games_by_search={
+            "portal": [
+                {
+                    "id": 22,
+                    "name": "Portal",
+                    "types": ["game"],
+                    "verified": True,
+                },
+                {"id": None, "name": "Broken"},
+            ]
+        }
+    )
+    app.dependency_overrides[get_video_category_repository] = (
+        lambda: video_category_repository
+    )
+    app.dependency_overrides[get_steamgriddb_client] = lambda: steamgriddb_client
+    app.dependency_overrides[get_current_user] = lambda: admin
+
+    response = client.get("/video-categories/steam/search?term=portal")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {"id": 22, "name": "Portal", "types": ["game"], "verified": True}
+    ]
+    assert steamgriddb_client.search_requests == ["portal"]
+
+
+@pytest.mark.http
+def test_import_steam_video_category_uses_stable_grid_dimensions(
+    app,
+    client,
+    user_factory,
+    video_category_repository,
+) -> None:
+    admin = user_factory(role="admin")
+    steamgriddb_client = FakeSteamGridDbClient(
+        games_by_appid={400: {"id": 22, "name": "Portal"}},
+        grids_by_game_dimensions={
+            (22, "600x900"): [{"url": "https://cdn.example.com/portal-v.jpg"}],
+            (22, "920x430"): [{"url": "https://cdn.example.com/portal-h.jpg"}],
+        },
+    )
+    app.dependency_overrides[get_video_category_repository] = (
+        lambda: video_category_repository
+    )
+    app.dependency_overrides[get_steamgriddb_client] = lambda: steamgriddb_client
+    app.dependency_overrides[get_current_user] = lambda: admin
+
+    response = client.post(
+        "/video-categories/steam/import",
+        json={"steam_appid": 400},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["name"] == "Portal"
+    assert body["source"] == "steam"
+    assert body["steam_appid"] == 400
+    assert body["steamgriddb_game_id"] == 22
+    assert body["thumbnail_vertical_url"] == "https://cdn.example.com/portal-v.jpg"
+    assert body["thumbnail_horizontal_url"] == "https://cdn.example.com/portal-h.jpg"
+    assert steamgriddb_client.grid_requests == [
+        (22, "600x900", 1),
+        (22, "920x430", 1),
+    ]
+    assert video_category_repository.upserted[0].steam_appid == 400
+
+
+@pytest.mark.http
+def test_import_steam_video_category_requires_external_id(
+    app,
+    client,
+    user_factory,
+    video_category_repository,
+) -> None:
+    admin = user_factory(role="admin")
+    app.dependency_overrides[get_video_category_repository] = (
+        lambda: video_category_repository
+    )
+    app.dependency_overrides[get_current_user] = lambda: admin
+
+    response = client.post("/video-categories/steam/import", json={})
+
+    assert response.status_code == 422
+    assert video_category_repository.upserted == []
 
 
 @pytest.mark.http

@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.modules.users.domain.user import User
 from app.modules.videos.domain.ports import VideoListResult
@@ -26,10 +26,23 @@ from config.settings import settings
 class VideoCategoryResponse(BaseModel):
     id: UUID
     name: str
+    source: str
+    steam_appid: int | None
+    steamgriddb_game_id: int | None
+    thumbnail_vertical_url: str | None
+    thumbnail_horizontal_url: str | None
 
     @classmethod
     def from_domain(cls, category: VideoCategory) -> "VideoCategoryResponse":
-        return cls(id=category.id, name=category.name)
+        return cls(
+            id=category.id,
+            name=category.name,
+            source=category.source.value,
+            steam_appid=category.steam_appid,
+            steamgriddb_game_id=category.steamgriddb_game_id,
+            thumbnail_vertical_url=category.thumbnail_vertical_url,
+            thumbnail_horizontal_url=category.thumbnail_horizontal_url,
+        )
 
 
 class VideoTagResponse(BaseModel):
@@ -263,6 +276,67 @@ class VideoListResponse(BaseModel):
             limit=limit,
             offset=offset,
         )
+
+
+class VideoCategoryCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    thumbnail_vertical_url: str | None = Field(default=None, max_length=1000)
+    thumbnail_horizontal_url: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def name_must_not_be_blank(cls, value: str) -> str:
+        name = value.strip()
+        if not name:
+            raise ValueError("name cannot be blank")
+        return name
+
+
+class SteamGridDbGameResponse(BaseModel):
+    id: int
+    name: str
+    types: list[str] = Field(default_factory=list)
+    verified: bool | None = None
+
+
+class SteamVideoCategoryImportRequest(BaseModel):
+    steam_appid: int | None = Field(default=None, gt=0)
+    steamgriddb_game_id: int | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def at_least_one_external_id(self):
+        if self.steam_appid is None and self.steamgriddb_game_id is None:
+            raise ValueError("steam_appid or steamgriddb_game_id is required")
+        return self
+
+
+class BulkVideoUploadItemRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=5000)
+    is_registered_only: bool = False
+    category_ids: list[UUID] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def title_must_not_be_blank(cls, value: str) -> str:
+        text = value.strip()
+        if not text:
+            raise ValueError("value cannot be blank")
+        return text
+
+    @field_validator("tags", mode="after")
+    @classmethod
+    def tags_must_fit_limit(cls, value: list[str]) -> list[str]:
+        tags = [tag.strip() for tag in value if tag.strip()]
+        if len(tags) > settings.max_video_tags:
+            raise ValueError("too many tags")
+        return tags
+
+
+class BulkVideoUploadResponse(BaseModel):
+    items: list[VideoDetailResponse]
+    total: int
 
 
 class VideoUpdateRequest(BaseModel):

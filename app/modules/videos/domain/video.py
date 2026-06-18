@@ -25,6 +25,11 @@ class VideoVariantType(str, Enum):
     LOW_H264 = "low_h264"
 
 
+class VideoCategorySource(str, Enum):
+    CUSTOM = "custom"
+    STEAM = "steam"
+
+
 @dataclass
 class VideoOwner:
     id: UUID
@@ -36,8 +41,23 @@ class VideoOwner:
 class VideoCategory:
     id: UUID
     name: str
+    source: VideoCategorySource
+    steam_appid: int | None
+    steamgriddb_game_id: int | None
+    thumbnail_vertical_url: str | None
+    thumbnail_horizontal_url: str | None
     created_at: datetime
     updated_at: datetime
+
+
+@dataclass(frozen=True)
+class VideoCategoryCreate:
+    name: str
+    source: VideoCategorySource = VideoCategorySource.CUSTOM
+    steam_appid: int | None = None
+    steamgriddb_game_id: int | None = None
+    thumbnail_vertical_url: str | None = None
+    thumbnail_horizontal_url: str | None = None
 
 
 @dataclass

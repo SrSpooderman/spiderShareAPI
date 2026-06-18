@@ -169,6 +169,20 @@ class VideoCategoryModel(Base):
         default=lambda: str(uuid4()),
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
+    source: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="custom",
+        server_default="custom",
+    )
+    steam_appid: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    steamgriddb_game_id: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        index=True,
+    )
+    thumbnail_vertical_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    thumbnail_horizontal_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,

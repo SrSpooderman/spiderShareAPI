@@ -21,6 +21,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from app.modules.auth.wiring import (
     get_current_user,
     get_optional_current_user,
+    require_admin,
     require_super_admin,
 )
 from app.modules.users.domain.user import User
@@ -42,12 +43,23 @@ from app.modules.videos.application.react_to_video import ReactToVideo
 from app.modules.videos.application.upload_video import UploadVideo, UploadVideoCommand
 from app.modules.videos.application.update_video import UpdateVideo, UpdateVideoCommand
 from app.modules.videos.domain.ports import (
+    VideoCategoryRepository,
     VideoProcessingQueue,
     VideoRepository,
     VideoStorage,
 )
-from app.modules.videos.domain.video import VideoOwner, VideoProcessingStatus, VideoVariantType
+from app.modules.videos.domain.video import (
+    VideoCategoryCreate,
+    VideoCategorySource,
+    VideoOwner,
+    VideoProcessingStatus,
+    VideoVariantType,
+)
 from app.modules.videos.entrypoints.schemas import (
+    SteamGridDbGameResponse,
+    SteamVideoCategoryImportRequest,
+    VideoCategoryCreateRequest,
+    VideoCategoryResponse,
     VideoDetailResponse,
     VideoListResponse,
     VideoReactionCountResponse,
@@ -63,11 +75,18 @@ from app.modules.videos.wiring import (
     get_react_to_video,
     get_upload_video,
     get_update_video,
+    get_video_category_repository,
     get_video_processing_queue,
     get_video_repository,
     get_video_storage,
 )
+from app.modules.steam.wiring import get_steamgriddb_client
 from app.shared.infrastructure.idempotency import IdempotencyRepository
+from app.shared.infrastructure.providers.steam.steamgriddb_client import (
+    SteamGridDbClient,
+    SteamGridDbConfigurationError,
+    SteamGridDbError,
+)
 from app.shared.wiring import get_idempotency_repository
 from config.settings import settings
 
@@ -75,6 +94,8 @@ from config.settings import settings
 router = APIRouter(tags=["videos"])
 logger = logging.getLogger(__name__)
 VIDEO_UPLOAD_IDEMPOTENCY_SCOPE = "videos.upload"
+STEAMGRIDDB_VERTICAL_GRID_DIMENSIONS = "600x900"
+STEAMGRIDDB_HORIZONTAL_GRID_DIMENSIONS = "920x430"
 
 
 def _fields_set(request: VideoUpdateRequest) -> set[str]:
@@ -163,6 +184,43 @@ def _normalize_optional_text(value: str | None) -> str:
         return ""
 
     return value.strip()
+
+
+def _map_steamgriddb_error(error: Exception) -> HTTPException:
+    if isinstance(error, SteamGridDbConfigurationError):
+        return HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(error),
+        )
+    if isinstance(error, SteamGridDbError):
+        return HTTPException(
+            status_code=error.status_code or status.HTTP_502_BAD_GATEWAY,
+            detail=str(error),
+        )
+
+    raise error
+
+
+def _best_grid_url(grids: list[dict]) -> str | None:
+    if not grids:
+        return None
+
+    grid = grids[0]
+    return grid.get("url") or grid.get("thumb")
+
+
+def _steamgriddb_game_to_response(game: dict) -> SteamGridDbGameResponse | None:
+    game_id = game.get("id")
+    name = game.get("name")
+    if game_id is None or not name:
+        return None
+
+    return SteamGridDbGameResponse(
+        id=game_id,
+        name=name,
+        types=game.get("types") or [],
+        verified=game.get("verified"),
+    )
 
 
 def _ensure_file_exists(path) -> None:
@@ -465,6 +523,138 @@ def list_videos(
     )
 
     return VideoListResponse.from_result(result, limit=limit, offset=offset)
+
+
+@router.get("/video-categories", response_model=list[VideoCategoryResponse])
+def list_video_categories(
+    video_category_repository: VideoCategoryRepository = Depends(
+        get_video_category_repository
+    ),
+) -> list[VideoCategoryResponse]:
+    return [
+        VideoCategoryResponse.from_domain(category)
+        for category in video_category_repository.list()
+    ]
+
+
+@router.post(
+    "/video-categories",
+    response_model=VideoCategoryResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_custom_video_category(
+    request: VideoCategoryCreateRequest,
+    current_user: User = Depends(require_admin),
+    video_category_repository: VideoCategoryRepository = Depends(
+        get_video_category_repository
+    ),
+) -> VideoCategoryResponse:
+    category = video_category_repository.create(
+        VideoCategoryCreate(
+            name=request.name,
+            source=VideoCategorySource.CUSTOM,
+            thumbnail_vertical_url=request.thumbnail_vertical_url,
+            thumbnail_horizontal_url=request.thumbnail_horizontal_url,
+        )
+    )
+    logger.info(
+        "Video category created category_id=%s source=%s requested_by=%s",
+        category.id,
+        category.source.value,
+        current_user.id,
+    )
+
+    return VideoCategoryResponse.from_domain(category)
+
+
+@router.get(
+    "/video-categories/steam/search",
+    response_model=list[SteamGridDbGameResponse],
+)
+def search_steam_video_categories(
+    term: str = Query(min_length=1, max_length=100),
+    current_user: User = Depends(require_admin),
+    steamgriddb_client: SteamGridDbClient = Depends(get_steamgriddb_client),
+) -> list[SteamGridDbGameResponse]:
+    del current_user
+    try:
+        games = steamgriddb_client.search_games(term)
+    except (SteamGridDbConfigurationError, SteamGridDbError) as error:
+        raise _map_steamgriddb_error(error)
+
+    return [
+        response
+        for response in (_steamgriddb_game_to_response(game) for game in games)
+        if response is not None
+    ]
+
+
+@router.post(
+    "/video-categories/steam/import",
+    response_model=VideoCategoryResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def import_steam_video_category(
+    request: SteamVideoCategoryImportRequest,
+    current_user: User = Depends(require_admin),
+    video_category_repository: VideoCategoryRepository = Depends(
+        get_video_category_repository
+    ),
+    steamgriddb_client: SteamGridDbClient = Depends(get_steamgriddb_client),
+) -> VideoCategoryResponse:
+    try:
+        if request.steam_appid is not None:
+            game = steamgriddb_client.get_game_by_steam_appid(request.steam_appid)
+        else:
+            game = steamgriddb_client.get_game_by_id(request.steamgriddb_game_id)
+
+        game_id = game.get("id")
+        name = game.get("name")
+        if game_id is None or not name:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="SteamGridDB game not found",
+            )
+
+        vertical_url = _best_grid_url(
+            steamgriddb_client.get_grids(
+                game_id,
+                dimensions=STEAMGRIDDB_VERTICAL_GRID_DIMENSIONS,
+            )
+        )
+        horizontal_url = _best_grid_url(
+            steamgriddb_client.get_grids(
+                game_id,
+                dimensions=STEAMGRIDDB_HORIZONTAL_GRID_DIMENSIONS,
+            )
+        )
+    except HTTPException:
+        raise
+    except (SteamGridDbConfigurationError, SteamGridDbError) as error:
+        raise _map_steamgriddb_error(error)
+
+    category = video_category_repository.upsert_steam_category(
+        VideoCategoryCreate(
+            name=name.strip(),
+            source=VideoCategorySource.STEAM,
+            steam_appid=request.steam_appid,
+            steamgriddb_game_id=game_id,
+            thumbnail_vertical_url=vertical_url,
+            thumbnail_horizontal_url=horizontal_url,
+        )
+    )
+    logger.info(
+        "Steam video category imported category_id=%s steam_appid=%s "
+        "steamgriddb_game_id=%s requested_by=%s has_vertical=%s has_horizontal=%s",
+        category.id,
+        category.steam_appid,
+        category.steamgriddb_game_id,
+        current_user.id,
+        category.thumbnail_vertical_url is not None,
+        category.thumbnail_horizontal_url is not None,
+    )
+
+    return VideoCategoryResponse.from_domain(category)
 
 
 @router.get("/videos/{video_id}", response_model=VideoDetailResponse)

@@ -6,6 +6,7 @@ from app.modules.users.domain.user import User, UserRole
 from app.modules.videos.domain.video import (
     Video,
     VideoCategory,
+    VideoCategorySource,
     VideoOwner,
     VideoProcessingError,
     VideoProcessingStatus,
@@ -75,6 +76,11 @@ def make_video_category(
     *,
     id: UUID | None = None,
     name: str = "Highlights",
+    source: VideoCategorySource = VideoCategorySource.CUSTOM,
+    steam_appid: int | None = None,
+    steamgriddb_game_id: int | None = None,
+    thumbnail_vertical_url: str | None = None,
+    thumbnail_horizontal_url: str | None = None,
     created_at: datetime | None = None,
     updated_at: datetime | None = None,
 ) -> VideoCategory:
@@ -82,6 +88,11 @@ def make_video_category(
     return VideoCategory(
         id=id or uuid4(),
         name=name,
+        source=source,
+        steam_appid=steam_appid,
+        steamgriddb_game_id=steamgriddb_game_id,
+        thumbnail_vertical_url=thumbnail_vertical_url,
+        thumbnail_horizontal_url=thumbnail_horizontal_url,
         created_at=created_at or now,
         updated_at=updated_at or now,
     )

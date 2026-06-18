@@ -10,13 +10,17 @@ from app.modules.videos.application.react_to_video import ReactToVideo
 from app.modules.videos.application.upload_video import UploadVideo
 from app.modules.videos.application.update_video import UpdateVideo
 from app.modules.videos.domain.ports import (
+    VideoCategoryRepository,
     VideoProcessingQueue,
     VideoRepository,
     VideoStorage,
     VideoTranscoder,
 )
 from app.modules.videos.infrastructure.queue import RqVideoProcessingQueue
-from app.modules.videos.infrastructure.repository import SqlAlchemyVideoRepository
+from app.modules.videos.infrastructure.repository import (
+    SqlAlchemyVideoCategoryRepository,
+    SqlAlchemyVideoRepository,
+)
 from app.shared.infrastructure.db.session import get_db
 from app.shared.infrastructure.providers.storage.video_storage import LocalVideoStorage
 from app.shared.infrastructure.providers.storage.video_transcoder import FfmpegVideoTranscoder
@@ -24,6 +28,12 @@ from app.shared.infrastructure.providers.storage.video_transcoder import FfmpegV
 
 def get_video_repository(db: Session = Depends(get_db)) -> VideoRepository:
     return SqlAlchemyVideoRepository(db)
+
+
+def get_video_category_repository(
+    db: Session = Depends(get_db),
+) -> VideoCategoryRepository:
+    return SqlAlchemyVideoCategoryRepository(db)
 
 
 def get_video_storage() -> VideoStorage:

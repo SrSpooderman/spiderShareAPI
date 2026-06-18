@@ -282,9 +282,12 @@ Variables principales:
 | `SUPER_ADMIN_PASSWORD` | Password inicial del super admin. |
 | `STEAM_WEB_API_KEY` | API key de Steam. Necesaria para consultar Steam real. |
 | `STEAM_WEB_API_BASE_URL` | URL base de Steam Web API. |
+| `STEAMGRIDDB_API_KEY` | Bearer token de SteamGridDB para buscar juegos e importar grids. |
+| `STEAMGRIDDB_API_BASE_URL` | URL base de SteamGridDB API v2. |
 | `VIDEO_STORAGE_PATH` | Carpeta/volumen donde se guardan originales, variantes y miniaturas. |
 | `MAX_VIDEO_SIZE_BYTES` | Tamano maximo de subida. Por defecto `524288000` bytes. |
 | `MAX_VIDEO_DURATION_SECONDS` | Duracion maxima aceptada. Por defecto `300`. |
+| `MAX_BULK_VIDEO_UPLOADS` | Numero maximo de videos en subida bulk. Por defecto `5`. |
 | `MAX_VIDEO_REACTIONS_PER_USER` | Numero maximo de reacciones distintas por usuario y video. |
 | `VIDEO_ALLOWED_MIME_TYPES` | Lista JSON de MIME types permitidos. |
 | `REDIS_URL` | URL de Redis usada por API y worker. |
@@ -462,6 +465,10 @@ Parametros:
 | Metodo | Ruta | Auth | Descripcion |
 | --- | --- | --- | --- |
 | `POST` | `/videos` | Si | Sube original, crea video `pending`, encola procesado y responde `201`. |
+| `GET` | `/video-categories` | Publico | Lista categorias disponibles para videos. |
+| `POST` | `/video-categories` | Admin | Crea una categoria custom con thumbnails opcionales. |
+| `GET` | `/video-categories/steam/search` | Admin | Busca juegos en SteamGridDB para importar categoria. |
+| `POST` | `/video-categories/steam/import` | Admin | Importa/actualiza categoria desde SteamGridDB y guarda grids. |
 | `POST` | `/videos/{video_id}/processing/retry` | Super admin | Limpia salidas de procesado y reencola un video no completo. |
 | `GET` | `/videos` | Publico | Lista videos visibles. Acepta token opcional para incluir privados accesibles. |
 | `GET` | `/videos/{video_id}` | Publico | Detalle si el video es visible para el usuario actual o anonimo. |
@@ -502,6 +509,32 @@ Filtros de `GET /videos`:
 - `offset`: por defecto `0`.
 
 `GET /videos` es publico. Si no hay token, solo devuelve videos visibles para anonimos. Si hay token valido, puede incluir videos registrados/privados segun permisos.
+
+Categorias:
+
+- `source`: `custom` o `steam`.
+- `steam_appid`: appid de Steam cuando la categoria representa un juego Steam.
+- `steamgriddb_game_id`: id interno de SteamGridDB.
+- `thumbnail_vertical_url`: grid vertical estable `600x900`.
+- `thumbnail_horizontal_url`: grid horizontal estable `920x430`.
+
+Importar desde SteamGridDB:
+
+```bash
+curl -X POST http://localhost:8000/video-categories/steam/import \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"steam_appid":400}'
+```
+
+Crear categoria custom:
+
+```bash
+curl -X POST http://localhost:8000/video-categories \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Indie","thumbnail_vertical_url":"https://example.com/v.jpg","thumbnail_horizontal_url":"https://example.com/h.jpg"}'
+```
 
 ## Contrato de Videos
 

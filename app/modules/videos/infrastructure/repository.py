@@ -6,24 +6,29 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.modules.videos.domain.ports import (
+    VideoCategoryRepository,
     VideoListFilters,
     VideoListResult,
     VideoRepository,
 )
 from app.modules.videos.domain.video import (
     Video,
+    VideoCategory,
+    VideoCategoryCreate,
     VideoCreate,
     VideoProcessingResult,
     VideoProcessingStatus,
     VideoReaction,
 )
 from app.modules.videos.infrastructure.mappers import (
+    video_category_model_to_domain,
     video_reaction_model_to_domain,
     video_create_to_model,
     video_model_to_domain,
 )
 from app.modules.videos.infrastructure.models import (
     VideoCategoryAssignmentModel,
+    VideoCategoryModel,
     VideoFavoriteModel,
     VideoModel,
     VideoProcessingErrorModel,
@@ -32,6 +37,74 @@ from app.modules.videos.infrastructure.models import (
     VideoTagModel,
     VideoVariantModel,
 )
+
+
+class SqlAlchemyVideoCategoryRepository(VideoCategoryRepository):
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def list(self) -> list[VideoCategory]:
+        models = self.session.scalars(
+            select(VideoCategoryModel).order_by(VideoCategoryModel.name.asc())
+        ).all()
+
+        return [video_category_model_to_domain(model) for model in models]
+
+    def get_by_id(self, category_id: UUID) -> VideoCategory | None:
+        model = self.session.get(VideoCategoryModel, str(category_id))
+        if model is None:
+            return None
+
+        return video_category_model_to_domain(model)
+
+    def create(self, category: VideoCategoryCreate) -> VideoCategory:
+        model = VideoCategoryModel(
+            name=category.name,
+            source=category.source.value,
+            steam_appid=category.steam_appid,
+            steamgriddb_game_id=category.steamgriddb_game_id,
+            thumbnail_vertical_url=category.thumbnail_vertical_url,
+            thumbnail_horizontal_url=category.thumbnail_horizontal_url,
+        )
+        self.session.add(model)
+        self.session.commit()
+        self.session.refresh(model)
+
+        return video_category_model_to_domain(model)
+
+    def upsert_steam_category(self, category: VideoCategoryCreate) -> VideoCategory:
+        model = None
+        if category.steam_appid is not None:
+            model = self.session.scalar(
+                select(VideoCategoryModel).where(
+                    VideoCategoryModel.steam_appid == category.steam_appid
+                )
+            )
+        if model is None and category.steamgriddb_game_id is not None:
+            model = self.session.scalar(
+                select(VideoCategoryModel).where(
+                    VideoCategoryModel.steamgriddb_game_id
+                    == category.steamgriddb_game_id
+                )
+            )
+        if model is None:
+            model = self.session.scalar(
+                select(VideoCategoryModel).where(VideoCategoryModel.name == category.name)
+            )
+
+        if model is None:
+            return self.create(category)
+
+        model.name = category.name
+        model.source = category.source.value
+        model.steam_appid = category.steam_appid
+        model.steamgriddb_game_id = category.steamgriddb_game_id
+        model.thumbnail_vertical_url = category.thumbnail_vertical_url
+        model.thumbnail_horizontal_url = category.thumbnail_horizontal_url
+        self.session.commit()
+        self.session.refresh(model)
+
+        return video_category_model_to_domain(model)
 
 
 class SqlAlchemyVideoRepository(VideoRepository):

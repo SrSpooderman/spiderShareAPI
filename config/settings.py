@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     super_admin_password: str | None = None
     steam_web_api_key: str | None = None
     steam_web_api_base_url: str = "https://api.steampowered.com"
+    steamgriddb_api_key: str | None = None
+    steamgriddb_api_base_url: str = "https://www.steamgriddb.com/api/v2"
     max_video_size_bytes: int | None = 524_288_000
     max_video_duration_seconds: int | None = 300
     max_video_tags: int = 6

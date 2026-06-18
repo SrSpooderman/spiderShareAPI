@@ -6,6 +6,8 @@ from uuid import UUID
 
 from app.modules.videos.domain.video import (
     Video,
+    VideoCategory,
+    VideoCategoryCreate,
     VideoCreate,
     VideoProcessingResult,
     VideoReaction,
@@ -142,6 +144,24 @@ class VideoRepository(ABC):
 
     @abstractmethod
     def get_reaction_counts(self, video_id: UUID) -> dict[str, int]:
+        pass
+
+
+class VideoCategoryRepository(ABC):
+    @abstractmethod
+    def list(self) -> list[VideoCategory]:
+        pass
+
+    @abstractmethod
+    def get_by_id(self, category_id: UUID) -> VideoCategory | None:
+        pass
+
+    @abstractmethod
+    def create(self, category: VideoCategoryCreate) -> VideoCategory:
+        pass
+
+    @abstractmethod
+    def upsert_steam_category(self, category: VideoCategoryCreate) -> VideoCategory:
         pass
 
 

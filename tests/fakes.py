@@ -9,6 +9,8 @@ from app.modules.users.domain.user import User, UserCreate, UserRole
 from app.modules.videos.domain.ports import VideoListFilters, VideoListResult
 from app.modules.videos.domain.video import (
     Video,
+    VideoCategory,
+    VideoCategoryCreate,
     VideoCreate,
     VideoProcessingError,
     VideoProcessingResult,
@@ -17,7 +19,14 @@ from app.modules.videos.domain.video import (
     video_popularity_score,
 )
 from app.shared.infrastructure.providers.steam.steam_client import SteamApiError
-from tests.factories import make_steam_game, make_user, make_video, make_video_variant, utc_now
+from tests.factories import (
+    make_steam_game,
+    make_user,
+    make_video,
+    make_video_category,
+    make_video_variant,
+    utc_now,
+)
 
 
 class FakeUserRepository:
@@ -470,6 +479,71 @@ class FakeVideoRepository:
         return counts
 
 
+class FakeVideoCategoryRepository:
+    def __init__(self, categories: list[VideoCategory] | None = None) -> None:
+        self.categories: dict[UUID, VideoCategory] = {}
+        self.created: list[VideoCategoryCreate] = []
+        self.upserted: list[VideoCategoryCreate] = []
+
+        for category in categories or []:
+            self.add(category)
+
+    def add(self, category: VideoCategory) -> VideoCategory:
+        self.categories[category.id] = category
+        return category
+
+    def list(self) -> list[VideoCategory]:
+        return sorted(self.categories.values(), key=lambda category: category.name)
+
+    def get_by_id(self, category_id: UUID) -> VideoCategory | None:
+        return self.categories.get(category_id)
+
+    def create(self, category: VideoCategoryCreate) -> VideoCategory:
+        self.created.append(category)
+        return self.add(
+            make_video_category(
+                name=category.name,
+                source=category.source,
+                steam_appid=category.steam_appid,
+                steamgriddb_game_id=category.steamgriddb_game_id,
+                thumbnail_vertical_url=category.thumbnail_vertical_url,
+                thumbnail_horizontal_url=category.thumbnail_horizontal_url,
+            )
+        )
+
+    def upsert_steam_category(self, category: VideoCategoryCreate) -> VideoCategory:
+        self.upserted.append(category)
+        existing = next(
+            (
+                stored_category
+                for stored_category in self.categories.values()
+                if (
+                    category.steam_appid is not None
+                    and stored_category.steam_appid == category.steam_appid
+                )
+                or (
+                    category.steamgriddb_game_id is not None
+                    and stored_category.steamgriddb_game_id == category.steamgriddb_game_id
+                )
+            ),
+            None,
+        )
+        if existing is not None:
+            updated = make_video_category(
+                id=existing.id,
+                name=category.name,
+                source=category.source,
+                steam_appid=category.steam_appid,
+                steamgriddb_game_id=category.steamgriddb_game_id,
+                thumbnail_vertical_url=category.thumbnail_vertical_url,
+                thumbnail_horizontal_url=category.thumbnail_horizontal_url,
+            )
+            self.categories[existing.id] = updated
+            return updated
+
+        return self.create(category)
+
+
 class FakeVideoStorage:
     def __init__(
         self,
@@ -716,3 +790,54 @@ class FakeSteamClient:
             steam_id_or_vanity,
             {"steamid": steam_id_or_vanity, "game_count": 0, "games": []},
         )
+
+
+class FakeSteamGridDbClient:
+    def __init__(
+        self,
+        *,
+        games_by_search: dict[str, list[dict]] | None = None,
+        games_by_appid: dict[int, dict] | None = None,
+        games_by_id: dict[int, dict] | None = None,
+        grids_by_game_dimensions: dict[tuple[int, str], list[dict]] | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        self.games_by_search = games_by_search or {}
+        self.games_by_appid = games_by_appid or {}
+        self.games_by_id = games_by_id or {}
+        self.grids_by_game_dimensions = grids_by_game_dimensions or {}
+        self.error = error
+        self.search_requests: list[str] = []
+        self.appid_requests: list[int] = []
+        self.game_id_requests: list[int] = []
+        self.grid_requests: list[tuple[int, str, int]] = []
+
+    def search_games(self, term: str) -> list[dict]:
+        if self.error is not None:
+            raise self.error
+        self.search_requests.append(term)
+        return self.games_by_search.get(term, [])
+
+    def get_game_by_steam_appid(self, appid: int) -> dict:
+        if self.error is not None:
+            raise self.error
+        self.appid_requests.append(appid)
+        return self.games_by_appid.get(appid, {})
+
+    def get_game_by_id(self, game_id: int) -> dict:
+        if self.error is not None:
+            raise self.error
+        self.game_id_requests.append(game_id)
+        return self.games_by_id.get(game_id, {})
+
+    def get_grids(
+        self,
+        game_id: int,
+        *,
+        dimensions: str,
+        limit: int = 1,
+    ) -> list[dict]:
+        if self.error is not None:
+            raise self.error
+        self.grid_requests.append((game_id, dimensions, limit))
+        return self.grids_by_game_dimensions.get((game_id, dimensions), [])
