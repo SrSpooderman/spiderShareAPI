@@ -19,6 +19,9 @@ services:
         condition: service_healthy
     networks:
       spidershare_network:
+      proxy_network:
+        aliases:
+          - ${API_NETWORK_ALIAS:-spidershare-api}
     command: >
       sh -c "alembic -c /app/alembic.ini upgrade head &&
       python -m app.bootstrap.seed_super_admin &&
@@ -60,6 +63,9 @@ services:
         condition: service_started
     networks:
       spidershare_network:
+      proxy_network:
+        aliases:
+          - ${BACKOFFICE_NETWORK_ALIAS:-backoffice}
 
   redis:
     image: redis:7-alpine
@@ -104,3 +110,7 @@ volumes:
 networks:
   spidershare_network:
     driver: bridge
+
+  proxy_network:
+    external: true
+    name: ${PROXY_NETWORK_NAME:-caddy}
