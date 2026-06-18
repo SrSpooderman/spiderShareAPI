@@ -126,16 +126,25 @@ curl http://localhost:8000/version
 
 ## Docker y Servicios
 
-`docker-compose.yml` define produccion:
+`docker-compose.yml` define produccion sin reverse proxy:
 
 - `api`: ejecuta migraciones, seed de super admin y arranca Uvicorn.
 - `worker`: ejecuta `python -m app.workers.video_processing`.
 - `backoffice`: sirve el panel administrativo React ya compilado.
-- `nginx`: reverse proxy publico con HTTPS para API y backoffice.
-- `certbot`: emision y renovacion de certificados Let's Encrypt.
 - `redis`: cola RQ interna, sin puerto publicado en produccion.
 - `mysql`: base de datos con volumen persistente.
 - `video_storage`: volumen persistente para videos.
+
+`docker-compose-reverse-proxy.yml` define produccion con reverse proxy en un unico fichero:
+
+- `api`: ejecuta migraciones, seed de super admin y arranca Uvicorn.
+- `worker`: ejecuta `python -m app.workers.video_processing`.
+- `backoffice`: sirve el panel administrativo React ya compilado usando `BACKOFFICE_PROXY_API_BASE_URL`, por defecto `/api`.
+- `redis`: cola RQ interna.
+- `mysql`: base de datos con volumen persistente.
+- `nginx`: reverse proxy publico con HTTPS para API y backoffice.
+- `nginx-bootstrap`: Nginx temporal HTTP para emitir certificados iniciales.
+- `certbot`: emision y renovacion de certificados Let's Encrypt.
 
 `docker-compose.dev.yml` define desarrollo:
 
@@ -161,9 +170,15 @@ Produccion:
 docker compose up --build -d
 ```
 
+Produccion con reverse proxy:
+
+```bash
+docker compose -f docker-compose-reverse-proxy.yml up --build -d
+```
+
 ## Reverse Proxy HTTPS con Nginx
 
-Produccion incluye Nginx como reverse proxy en `docker-compose.yml`. Su configuracion vive en `deploy/nginx/nginx.conf`.
+El reverse proxy vive en `docker-compose-reverse-proxy.yml`. Ese fichero incluye todos los servicios necesarios y su configuracion de Nginx vive en `deploy/nginx/nginx.conf`.
 
 La topologia queda asi:
 
@@ -192,13 +207,13 @@ NGINX_CLIENT_MAX_BODY_SIZE=600m
 Para emitir certificados por primera vez, levanta el Nginx temporal de bootstrap. Solo sirve HTTP y la carpeta de challenges de Let's Encrypt:
 
 ```bash
-docker compose --profile bootstrap up -d nginx-bootstrap
+docker compose -f docker-compose-reverse-proxy.yml --profile bootstrap up -d nginx-bootstrap
 ```
 
 Despues emite un certificado para cada dominio:
 
 ```bash
-docker compose run --rm certbot certonly \
+docker compose -f docker-compose-reverse-proxy.yml run --rm certbot certonly \
   --webroot \
   -w /var/www/certbot \
   -d api.tudominio.com \
@@ -206,7 +221,7 @@ docker compose run --rm certbot certonly \
   --agree-tos \
   --no-eff-email
 
-docker compose run --rm certbot certonly \
+docker compose -f docker-compose-reverse-proxy.yml run --rm certbot certonly \
   --webroot \
   -w /var/www/certbot \
   -d admin.tudominio.com \
@@ -218,18 +233,18 @@ docker compose run --rm certbot certonly \
 Para cambiar del bootstrap al proxy HTTPS real:
 
 ```bash
-docker compose --profile bootstrap stop nginx-bootstrap
-docker compose up --build -d
+docker compose -f docker-compose-reverse-proxy.yml --profile bootstrap stop nginx-bootstrap
+docker compose -f docker-compose-reverse-proxy.yml up --build -d
 ```
 
 Renovacion con el servicio incluido:
 
 ```bash
-docker compose run --rm certbot renew --webroot -w /var/www/certbot
-docker compose exec nginx nginx -s reload
+docker compose -f docker-compose-reverse-proxy.yml run --rm certbot renew --webroot -w /var/www/certbot
+docker compose -f docker-compose-reverse-proxy.yml exec nginx nginx -s reload
 ```
 
-En produccion solo Nginx publica puertos al exterior. API, backoffice, MySQL y Redis quedan internos a la red Docker.
+Con el fichero de reverse proxy, Nginx publica `80` y `443`. API y backoffice mantienen sus puertos directos ligados a `127.0.0.1`; MySQL y Redis quedan internos a la red Docker.
 
 ## Variables de Entorno
 
