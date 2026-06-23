@@ -2,6 +2,7 @@ import logging
 from time import perf_counter
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 
 from app.modules.admin.entrypoints.routes import router as admin_router
@@ -73,6 +74,15 @@ def _restore_authenticated_user_context(request: Request) -> None:
 def create_app() -> FastAPI:
     configure_logging()
     app = FastAPI(title="SpiderShare")
+
+    if settings.cors_allowed_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_allowed_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
     @app.middleware("http")
     async def request_logging_middleware(request: Request, call_next):

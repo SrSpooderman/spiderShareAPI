@@ -1,4 +1,7 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Annotated
+
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -6,6 +9,7 @@ class Settings(BaseSettings):
     app_version: str = "1.0.0"
     app_env: str = "local"
     app_debug: bool = True
+    cors_allowed_origins: Annotated[list[str], NoDecode] = []
     database_url: str
     video_storage_path: str = "/app/storage/videos"
     secret_key: str
@@ -26,6 +30,15 @@ class Settings(BaseSettings):
     video_processing_queue_name: str = "video-processing"
     video_processing_max_attempts: int = 3
     video_processing_job_timeout_seconds: int = 900
+
+    @field_validator("cors_allowed_origins", mode="before")
+    @classmethod
+    def parse_cors_allowed_origins(cls, value: str | list[str] | None) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
 
     model_config = SettingsConfigDict(
         env_file=".env",
