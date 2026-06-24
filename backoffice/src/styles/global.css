@@ -63,6 +63,8 @@ th {
 }
 
 .sidebar {
+  display: flex;
+  flex-direction: column;
   background: #101820;
   color: #eff6ff;
   padding: 20px 14px;
@@ -88,6 +90,24 @@ th {
 .nav-list {
   display: grid;
   gap: 6px;
+}
+
+.github-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: auto 8px 4px;
+  padding: 10px 12px;
+  border: 1px solid #34485b;
+  border-radius: 8px;
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.github-link:hover {
+  border-color: #64748b;
+  background: #243241;
+  color: #ffffff;
 }
 
 .nav-link {

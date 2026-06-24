@@ -75,7 +75,15 @@ def _restore_authenticated_user_context(request: Request) -> None:
 
 def create_app() -> FastAPI:
     configure_logging()
-    app = FastAPI(title="SpiderShare")
+    app = FastAPI(
+        title="SpiderShare",
+        version=settings.app_version,
+        description="API for cliponomicon videos and clips.",
+        contact={
+            "name": "SrSpooderman",
+            "url": "https://github.com/SrSpooderman",
+        },
+    )
 
     if settings.cors_allowed_origins:
         app.add_middleware(

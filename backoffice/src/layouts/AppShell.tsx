@@ -1,6 +1,7 @@
 import {
   Activity,
   ClipboardList,
+  Github,
   LayoutDashboard,
   ListVideo,
   LogOut,
@@ -51,6 +52,16 @@ export function AppShell() {
             </NavLink>
           ))}
         </nav>
+
+        <a
+          className="github-link"
+          href="https://github.com/SrSpooderman"
+          target="_blank"
+          rel="noreferrer"
+        >
+          <Github size={18} />
+          <span>GitHub · SrSpooderman</span>
+        </a>
       </aside>
 
       <main className="main-panel">
