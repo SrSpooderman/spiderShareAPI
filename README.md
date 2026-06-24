@@ -465,10 +465,10 @@ Parametros:
 | Metodo | Ruta | Auth | Descripcion |
 | --- | --- | --- | --- |
 | `POST` | `/videos` | Si | Sube original, crea video `pending`, encola procesado y responde `201`. |
-| `GET` | `/video-categories` | Publico | Lista categorias disponibles para videos. |
-| `POST` | `/video-categories` | Admin | Crea una categoria custom con thumbnails opcionales. |
-| `GET` | `/video-categories/steam/search` | Admin | Busca juegos en SteamGridDB para importar categoria. |
-| `POST` | `/video-categories/steam/import` | Admin | Importa/actualiza categoria desde SteamGridDB y guarda grids. |
+| `GET` | `/category` | Publico | Lista categorias disponibles para videos. |
+| `POST` | `/category` | Admin | Crea una categoria custom con thumbnails opcionales. |
+| `GET` | `/category/steam/search` | Admin | Busca juegos en SteamGridDB para importar categoria. |
+| `POST` | `/category/steam/import` | Admin | Importa/actualiza categoria desde SteamGridDB y guarda grids. |
 | `POST` | `/videos/{video_id}/processing/retry` | Super admin | Limpia salidas de procesado y reencola un video no completo. |
 | `GET` | `/videos` | Publico | Lista videos visibles. Acepta token opcional para incluir privados accesibles. |
 | `GET` | `/videos/{video_id}` | Publico | Detalle si el video es visible para el usuario actual o anonimo. |
@@ -477,12 +477,12 @@ Parametros:
 | `GET` | `/videos/{video_id}/thumbnail` | Publico | Sirve miniatura JPEG si hay permiso. |
 | `PATCH` | `/videos/{video_id}` | Si | Actualiza metadata si owner/admin/super admin. |
 | `DELETE` | `/videos/{video_id}` | Si | Elimina video si owner/super admin. |
-| `POST` | `/videos/{video_id}/favorite` | Si | Marca favorito. |
-| `DELETE` | `/videos/{video_id}/favorite` | Si | Quita favorito. |
-| `GET` | `/users/me/video-favorites` | Si | Lista favoritos del usuario autenticado. |
-| `GET` | `/videos/{video_id}/reactions` | Publico | Conteos de reacciones visibles. |
-| `POST` | `/videos/{video_id}/reactions` | Si | Crea o actualiza reaccion. |
-| `DELETE` | `/videos/{video_id}/reactions` | Si | Elimina reaccion del usuario. |
+| `POST` | `/interactions/videos/{video_id}/favorite` | Si | Marca favorito. |
+| `DELETE` | `/interactions/videos/{video_id}/favorite` | Si | Quita favorito. |
+| `GET` | `/interactions/me/video-favorites` | Si | Lista favoritos del usuario autenticado. |
+| `GET` | `/interactions/videos/{video_id}/reactions` | Publico | Conteos de reacciones visibles. |
+| `POST` | `/interactions/videos/{video_id}/reactions` | Si | Crea o actualiza reaccion. |
+| `DELETE` | `/interactions/videos/{video_id}/reactions` | Si | Elimina reaccion del usuario. |
 
 ### Admin / Backoffice
 
@@ -521,7 +521,7 @@ Categorias:
 Importar desde SteamGridDB:
 
 ```bash
-curl -X POST http://localhost:8000/video-categories/steam/import \
+curl -X POST http://localhost:8000/category/steam/import \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
   -d '{"steam_appid":400}'
@@ -530,7 +530,7 @@ curl -X POST http://localhost:8000/video-categories/steam/import \
 Crear categoria custom:
 
 ```bash
-curl -X POST http://localhost:8000/video-categories \
+curl -X POST http://localhost:8000/category \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
   -d '{"name":"Indie","thumbnail_vertical_url":"https://example.com/v.jpg","thumbnail_horizontal_url":"https://example.com/h.jpg"}'

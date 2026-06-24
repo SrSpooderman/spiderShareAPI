@@ -182,14 +182,14 @@ def test_list_and_create_custom_video_categories(
     )
     app.dependency_overrides[get_current_user] = lambda: admin
 
-    response = client.get("/video-categories")
+    response = client.get("/category")
 
     assert response.status_code == 200
     assert response.json()[0]["name"] == "Existing"
     assert response.json()[0]["source"] == "custom"
 
     response = client.post(
-        "/video-categories",
+        "/category",
         json={
             "name": "Indie",
             "thumbnail_vertical_url": "https://cdn.example.com/indie-v.jpg",
@@ -233,7 +233,7 @@ def test_search_steamgriddb_games_for_video_categories(
     app.dependency_overrides[get_steamgriddb_client] = lambda: steamgriddb_client
     app.dependency_overrides[get_current_user] = lambda: admin
 
-    response = client.get("/video-categories/steam/search?term=portal")
+    response = client.get("/category/steam/search?term=portal")
 
     assert response.status_code == 200
     assert response.json() == [
@@ -264,7 +264,7 @@ def test_import_steam_video_category_uses_stable_grid_dimensions(
     app.dependency_overrides[get_current_user] = lambda: admin
 
     response = client.post(
-        "/video-categories/steam/import",
+        "/category/steam/import",
         json={"steam_appid": 400},
     )
 
@@ -296,7 +296,7 @@ def test_import_steam_video_category_requires_external_id(
     )
     app.dependency_overrides[get_current_user] = lambda: admin
 
-    response = client.post("/video-categories/steam/import", json={})
+    response = client.post("/category/steam/import", json={})
 
     assert response.status_code == 422
     assert video_category_repository.upserted == []
@@ -711,18 +711,18 @@ def test_favorite_routes_and_my_favorites(
     app.dependency_overrides[get_video_repository] = lambda: video_repository
     app.dependency_overrides[get_current_user] = lambda: user
 
-    response = client.post(f"/videos/{video.id}/favorite")
+    response = client.post(f"/interactions/videos/{video.id}/favorite")
 
     assert response.status_code == 204
     assert video_repository.is_favorite(video.id, user.id) is True
 
-    response = client.get("/users/me/video-favorites")
+    response = client.get("/interactions/me/video-favorites")
 
     assert response.status_code == 200
     assert response.json()["total"] == 1
     assert response.json()["items"][0]["id"] == str(video.id)
 
-    response = client.delete(f"/videos/{video.id}/favorite")
+    response = client.delete(f"/interactions/videos/{video.id}/favorite")
 
     assert response.status_code == 204
     assert video_repository.is_favorite(video.id, user.id) is False
@@ -743,7 +743,7 @@ def test_reaction_routes_set_list_and_delete_reaction(
     app.dependency_overrides[get_optional_current_user] = lambda: user
 
     response = client.post(
-        f"/videos/{video.id}/reactions",
+        f"/interactions/videos/{video.id}/reactions",
         json={"reaction_type": "🔥"},
     )
 
@@ -751,20 +751,20 @@ def test_reaction_routes_set_list_and_delete_reaction(
     assert response.json()["reaction_type"] == "🔥"
 
     response = client.post(
-        f"/videos/{video.id}/reactions",
+        f"/interactions/videos/{video.id}/reactions",
         json={"reaction_type": "😂"},
     )
 
     assert response.status_code == 200
 
     response = client.post(
-        f"/videos/{video.id}/reactions",
+        f"/interactions/videos/{video.id}/reactions",
         json={"reaction_type": "😮"},
     )
 
     assert response.status_code == 409
 
-    response = client.get(f"/videos/{video.id}/reactions")
+    response = client.get(f"/interactions/videos/{video.id}/reactions")
 
     assert response.status_code == 200
     assert response.json() == [
@@ -772,7 +772,7 @@ def test_reaction_routes_set_list_and_delete_reaction(
         {"type": "😂", "count": 1},
     ]
 
-    response = client.delete(f"/videos/{video.id}/reactions")
+    response = client.delete(f"/interactions/videos/{video.id}/reactions")
 
     assert response.status_code == 204
     assert video_repository.get_reaction_counts(video.id) == {}
