@@ -1,18 +1,28 @@
-import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { FormEvent, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { backofficeService } from "@/shared/api/backofficeService";
-import { UserRole } from "@/shared/types/backoffice";
+import { useAuth } from "@/modules/auth/AuthContext";
+import { UserCreateInput, UserRole } from "@/shared/types/backoffice";
 import { Badge } from "@/shared/ui/Badge";
 import { EmptyState } from "@/shared/ui/EmptyState";
 import { PageHeader } from "@/shared/ui/PageHeader";
 import { QueryPanelState } from "@/shared/ui/QueryPanelState";
 
 export function UserListPage() {
+  const { user: currentUser } = useAuth();
   const [username, setUsername] = useState("");
   const [role, setRole] = useState<UserRole | "">("");
   const [isActive, setIsActive] = useState<"true" | "false" | "">("");
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [newUser, setNewUser] = useState<UserCreateInput>({
+    username: "",
+    password: "",
+    role: "user"
+  });
+  const queryClient = useQueryClient();
   const filters = {
     username,
     role: role || undefined,
@@ -23,6 +33,22 @@ export function UserListPage() {
     queryKey: ["users", filters],
     queryFn: () => backofficeService.getUsers(filters)
   });
+  const createUser = useMutation({
+    mutationFn: backofficeService.createUser,
+    onSuccess: async () => {
+      setNewUser({ username: "", password: "", role: "user" });
+      setCreateError(null);
+      setShowCreateForm(false);
+      await queryClient.invalidateQueries({ queryKey: ["users"] });
+    },
+    onError: () => setCreateError("No se pudo crear el usuario. Revisa los datos e inténtalo de nuevo.")
+  });
+
+  function submitCreateUser(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreateError(null);
+    createUser.mutate(newUser);
+  }
 
   return (
     <section className="stack">
@@ -30,7 +56,37 @@ export function UserListPage() {
         eyebrow="Identidad"
         title="Usuarios"
         description="Gestion operativa de usuarios, roles y estado de cuenta."
+        actions={
+          <button className="button primary" type="button" onClick={() => setShowCreateForm((visible) => !visible)}>
+            {showCreateForm ? "Cancelar" : "Crear usuario"}
+          </button>
+        }
       />
+      {showCreateForm ? (
+        <article className="panel">
+          <form className="user-create-form" onSubmit={submitCreateUser}>
+            <div className="field">
+              <label htmlFor="new-username">Username</label>
+              <input id="new-username" minLength={3} maxLength={100} required value={newUser.username} onChange={(event) => setNewUser({ ...newUser, username: event.target.value })} />
+            </div>
+            <div className="field">
+              <label htmlFor="new-password">Contraseña</label>
+              <input id="new-password" minLength={8} maxLength={128} required type="password" value={newUser.password} onChange={(event) => setNewUser({ ...newUser, password: event.target.value })} />
+            </div>
+            <div className="field">
+              <label htmlFor="new-role">Rol</label>
+              <select id="new-role" value={newUser.role} onChange={(event) => setNewUser({ ...newUser, role: event.target.value as UserCreateInput["role"] })}>
+                <option value="user">user</option>
+                {currentUser?.role === "super_admin" ? <option value="admin">admin</option> : null}
+              </select>
+            </div>
+            <button className="button primary" disabled={createUser.isPending} type="submit">
+              {createUser.isPending ? "Creando..." : "Crear usuario"}
+            </button>
+            {createError ? <p className="form-error" role="alert">{createError}</p> : null}
+          </form>
+        </article>
+      ) : null}
       <article className="panel">
         <div className="toolbar">
           <input

@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -230,6 +231,11 @@ def admin_worker_events(
     video_id: UUID | None = Query(default=None),
     job_id: str | None = Query(default=None),
     level: str | None = Query(default=None),
+    event_type: str | None = Query(default=None),
+    worker_name: str | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=200),
+    created_from: datetime | None = Query(default=None),
+    created_to: datetime | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     _current_user: User = Depends(require_admin),
@@ -239,6 +245,11 @@ def admin_worker_events(
         video_id=video_id,
         job_id=job_id,
         level=level,
+        event_type=event_type,
+        worker_name=worker_name,
+        search=search,
+        created_from=created_from,
+        created_to=created_to,
         limit=limit,
         offset=offset,
     )

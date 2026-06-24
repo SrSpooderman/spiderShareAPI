@@ -195,6 +195,21 @@ th {
   gap: 10px;
 }
 
+.user-create-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(220px, 1fr) minmax(150px, 0.6fr) auto;
+  align-items: end;
+  gap: 14px;
+  padding: 18px;
+}
+
+.form-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #b91c1c;
+  font-size: 14px;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -293,6 +308,31 @@ th {
 
 .toolbar input {
   width: min(360px, 100%);
+}
+
+.event-console-filters input {
+  width: min(240px, 100%);
+}
+
+.event-metadata {
+  margin-top: 6px;
+}
+
+.event-metadata summary {
+  cursor: pointer;
+  color: #2563eb;
+  font-size: 12px;
+}
+
+.event-metadata pre {
+  max-width: 440px;
+  overflow: auto;
+  margin: 6px 0 0;
+  padding: 10px;
+  border-radius: 6px;
+  background: #101820;
+  color: #dbeafe;
+  font-size: 12px;
 }
 
 .pagination {

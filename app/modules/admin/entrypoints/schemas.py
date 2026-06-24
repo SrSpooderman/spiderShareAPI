@@ -84,6 +84,7 @@ class AdminWorkerEventResponse(CamelModel):
     video_id: UUID | None = Field(alias="videoId")
     job_id: str | None = Field(alias="jobId")
     worker_name: str = Field(alias="workerName")
+    metadata: dict | None = None
     created_at: datetime = Field(alias="createdAt")
 
 

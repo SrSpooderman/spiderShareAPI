@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { backofficeService } from "@/shared/api/backofficeService";
+import { formatDateTime } from "@/shared/formatters/dateTime";
 import { WorkerEvent } from "@/shared/types/backoffice";
 import { Badge } from "@/shared/ui/Badge";
 import { EmptyState } from "@/shared/ui/EmptyState";
@@ -85,7 +86,7 @@ export function WorkerEventsPage() {
             <tbody>
               {visibleEvents.map((event) => (
                 <tr key={event.id}>
-                  <td>{event.createdAt}</td>
+                  <td>{formatDateTime(event.createdAt)}</td>
                   <td><Badge tone={event.level === "error" ? "red" : "green"}>{event.level}</Badge></td>
                   <td>{event.eventType}</td>
                   <td>{event.videoId ? <Link to={`/videos/${event.videoId}`}>{event.videoId}</Link> : "-"}</td>

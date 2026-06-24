@@ -58,6 +58,11 @@ class AdminReadModel:
         video_id: UUID | None = None,
         job_id: str | None = None,
         level: str | None = None,
+        event_type: str | None = None,
+        worker_name: str | None = None,
+        search: str | None = None,
+        created_from: datetime | None = None,
+        created_to: datetime | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[AdminWorkerEventResponse]:
@@ -218,6 +223,11 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
         video_id: UUID | None = None,
         job_id: str | None = None,
         level: str | None = None,
+        event_type: str | None = None,
+        worker_name: str | None = None,
+        search: str | None = None,
+        created_from: datetime | None = None,
+        created_to: datetime | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[AdminWorkerEventResponse]:
@@ -234,6 +244,20 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
             conditions.append(WorkerEventModel.job_id == job_id)
         if level:
             conditions.append(WorkerEventModel.level == level)
+        if event_type:
+            conditions.append(WorkerEventModel.event_type == event_type)
+        if worker_name:
+            conditions.append(WorkerEventModel.worker_name == worker_name)
+        if search:
+            pattern = f"%{search}%"
+            conditions.append(
+                WorkerEventModel.event_type.ilike(pattern)
+                | WorkerEventModel.message.ilike(pattern)
+            )
+        if created_from is not None:
+            conditions.append(WorkerEventModel.created_at >= created_from)
+        if created_to is not None:
+            conditions.append(WorkerEventModel.created_at <= created_to)
         if conditions:
             statement = statement.where(*conditions)
 
@@ -246,6 +270,7 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
                 video_id=UUID(model.video_id) if model.video_id is not None else None,
                 job_id=model.job_id,
                 worker_name=model.worker_name,
+                metadata=model.metadata_json,
                 created_at=model.created_at,
             )
             for model in self.session.scalars(statement).all()

@@ -76,6 +76,7 @@ export type WorkerEvent = {
   videoId: string | null;
   jobId: string | null;
   workerName: string;
+  metadata: Record<string, unknown> | null;
   createdAt: string;
 };
 
@@ -114,6 +115,12 @@ export type UserUpdateInput = {
   isActive?: boolean;
 };
 
+export type UserCreateInput = {
+  username: string;
+  password: string;
+  role: Exclude<UserRole, "super_admin">;
+};
+
 export type AuditEntry = {
   id: string;
   actorUsername: string;
@@ -132,6 +139,11 @@ export type WorkerEventFilters = OffsetPagination & {
   level?: WorkerEvent["level"];
   videoId?: string;
   jobId?: string;
+  eventType?: string;
+  workerName?: string;
+  search?: string;
+  createdFrom?: string;
+  createdTo?: string;
 };
 
 export type RawLogLine = {

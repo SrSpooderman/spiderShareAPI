@@ -21,7 +21,7 @@ const navItems = [
   { to: "/videos", label: "Videos", icon: ListVideo },
   { to: "/worker/queue", label: "Cola", icon: ServerCog },
   { to: "/worker/events", label: "Eventos", icon: Activity },
-  { to: "/worker/logs", label: "Logs", icon: ScrollText },
+  { to: "/worker/logs", label: "Consola", icon: ScrollText },
   { to: "/users", label: "Usuarios", icon: Users },
   { to: "/audit", label: "Auditoria", icon: ClipboardList }
 ];
