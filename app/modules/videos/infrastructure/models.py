@@ -9,6 +9,7 @@ from sqlalchemy import (
     Float,
     String,
     Text,
+    LargeBinary,
     UniqueConstraint,
     func,
 )
@@ -183,6 +184,10 @@ class VideoCategoryModel(Base):
     )
     thumbnail_vertical_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     thumbnail_horizontal_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    thumbnail_vertical_image: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    thumbnail_vertical_content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    thumbnail_horizontal_image: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    thumbnail_horizontal_content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,

@@ -65,12 +65,37 @@ class SqlAlchemyVideoCategoryRepository(VideoCategoryRepository):
             steamgriddb_game_id=category.steamgriddb_game_id,
             thumbnail_vertical_url=category.thumbnail_vertical_url,
             thumbnail_horizontal_url=category.thumbnail_horizontal_url,
+            thumbnail_vertical_image=category.thumbnail_vertical_image,
+            thumbnail_vertical_content_type=category.thumbnail_vertical_content_type,
+            thumbnail_horizontal_image=category.thumbnail_horizontal_image,
+            thumbnail_horizontal_content_type=category.thumbnail_horizontal_content_type,
         )
         self.session.add(model)
         self.session.commit()
         self.session.refresh(model)
 
         return video_category_model_to_domain(model)
+
+    def update(self, category_id: UUID, category: VideoCategoryCreate) -> VideoCategory | None:
+        model = self.session.get(VideoCategoryModel, str(category_id))
+        if model is None:
+            return None
+        model.name = category.name
+        model.thumbnail_vertical_image = category.thumbnail_vertical_image
+        model.thumbnail_vertical_content_type = category.thumbnail_vertical_content_type
+        model.thumbnail_horizontal_image = category.thumbnail_horizontal_image
+        model.thumbnail_horizontal_content_type = category.thumbnail_horizontal_content_type
+        self.session.commit()
+        self.session.refresh(model)
+        return video_category_model_to_domain(model)
+
+    def delete(self, category_id: UUID) -> bool:
+        model = self.session.get(VideoCategoryModel, str(category_id))
+        if model is None:
+            return False
+        self.session.delete(model)
+        self.session.commit()
+        return True
 
     def upsert_steam_category(self, category: VideoCategoryCreate) -> VideoCategory:
         model = None

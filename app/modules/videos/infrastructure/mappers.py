@@ -100,6 +100,10 @@ def video_category_model_to_domain(model: VideoCategoryModel) -> VideoCategory:
         steamgriddb_game_id=model.steamgriddb_game_id,
         thumbnail_vertical_url=model.thumbnail_vertical_url,
         thumbnail_horizontal_url=model.thumbnail_horizontal_url,
+        thumbnail_vertical_image=model.thumbnail_vertical_image,
+        thumbnail_vertical_content_type=model.thumbnail_vertical_content_type,
+        thumbnail_horizontal_image=model.thumbnail_horizontal_image,
+        thumbnail_horizontal_content_type=model.thumbnail_horizontal_content_type,
         created_at=model.created_at,
         updated_at=model.updated_at,
     )

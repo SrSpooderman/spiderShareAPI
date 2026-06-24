@@ -46,6 +46,10 @@ class VideoCategory:
     steamgriddb_game_id: int | None
     thumbnail_vertical_url: str | None
     thumbnail_horizontal_url: str | None
+    thumbnail_vertical_image: bytes | None
+    thumbnail_vertical_content_type: str | None
+    thumbnail_horizontal_image: bytes | None
+    thumbnail_horizontal_content_type: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -58,6 +62,10 @@ class VideoCategoryCreate:
     steamgriddb_game_id: int | None = None
     thumbnail_vertical_url: str | None = None
     thumbnail_horizontal_url: str | None = None
+    thumbnail_vertical_image: bytes | None = None
+    thumbnail_vertical_content_type: str | None = None
+    thumbnail_horizontal_image: bytes | None = None
+    thumbnail_horizontal_content_type: str | None = None
 
 
 @dataclass

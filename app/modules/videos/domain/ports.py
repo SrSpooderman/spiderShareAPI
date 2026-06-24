@@ -161,6 +161,14 @@ class VideoCategoryRepository(ABC):
         pass
 
     @abstractmethod
+    def update(self, category_id: UUID, category: VideoCategoryCreate) -> VideoCategory | None:
+        pass
+
+    @abstractmethod
+    def delete(self, category_id: UUID) -> bool:
+        pass
+
+    @abstractmethod
     def upsert_steam_category(self, category: VideoCategoryCreate) -> VideoCategory:
         pass
 
