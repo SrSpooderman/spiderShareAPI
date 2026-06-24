@@ -258,6 +258,8 @@ Variables principales:
 | `APP_VERSION` | Version devuelta por `/version`. |
 | `APP_ENV` | Entorno logico. `local`, `dev` o `development` activan logging DEBUG. |
 | `APP_DEBUG` | Flag de debug. |
+| `LOG_FORMAT` | `pretty` para desarrollo legible o `json` para logs estructurados. |
+| `LOG_LEVEL` | Nivel opcional: `DEBUG`, `INFO`, `WARNING`, `ERROR` o `CRITICAL`. |
 | `APP_HOST` | Host esperado para arranque local si se usa externamente. |
 | `APP_PORT` | Puerto local publicado por Docker para la API. |
 | `BACKOFFICE_PORT` | Puerto local publicado por Docker para el backoffice. |
@@ -302,6 +304,8 @@ APP_NAME=SpiderShare
 APP_VERSION=1.0.0
 APP_ENV=local
 APP_DEBUG=true
+LOG_FORMAT=pretty
+LOG_LEVEL=
 APP_PORT=8000
 BACKOFFICE_PORT=5173
 BACKOFFICE_API_BASE_URL=http://localhost:8000

@@ -508,6 +508,10 @@ class FakeVideoCategoryRepository:
                 steamgriddb_game_id=category.steamgriddb_game_id,
                 thumbnail_vertical_url=category.thumbnail_vertical_url,
                 thumbnail_horizontal_url=category.thumbnail_horizontal_url,
+                thumbnail_vertical_image=category.thumbnail_vertical_image,
+                thumbnail_vertical_content_type=category.thumbnail_vertical_content_type,
+                thumbnail_horizontal_image=category.thumbnail_horizontal_image,
+                thumbnail_horizontal_content_type=category.thumbnail_horizontal_content_type,
             )
         )
 
@@ -537,11 +541,38 @@ class FakeVideoCategoryRepository:
                 steamgriddb_game_id=category.steamgriddb_game_id,
                 thumbnail_vertical_url=category.thumbnail_vertical_url,
                 thumbnail_horizontal_url=category.thumbnail_horizontal_url,
+                thumbnail_vertical_image=category.thumbnail_vertical_image,
+                thumbnail_vertical_content_type=category.thumbnail_vertical_content_type,
+                thumbnail_horizontal_image=category.thumbnail_horizontal_image,
+                thumbnail_horizontal_content_type=category.thumbnail_horizontal_content_type,
             )
             self.categories[existing.id] = updated
             return updated
 
         return self.create(category)
+
+    def update(self, category_id: UUID, category: VideoCategoryCreate) -> VideoCategory | None:
+        existing = self.categories.get(category_id)
+        if existing is None:
+            return None
+        updated = make_video_category(
+            id=category_id,
+            name=category.name,
+            source=existing.source,
+            steam_appid=existing.steam_appid,
+            steamgriddb_game_id=existing.steamgriddb_game_id,
+            thumbnail_vertical_url=existing.thumbnail_vertical_url,
+            thumbnail_horizontal_url=existing.thumbnail_horizontal_url,
+            thumbnail_vertical_image=category.thumbnail_vertical_image,
+            thumbnail_vertical_content_type=category.thumbnail_vertical_content_type,
+            thumbnail_horizontal_image=category.thumbnail_horizontal_image,
+            thumbnail_horizontal_content_type=category.thumbnail_horizontal_content_type,
+        )
+        self.categories[category_id] = updated
+        return updated
+
+    def delete(self, category_id: UUID) -> bool:
+        return self.categories.pop(category_id, None) is not None
 
 
 class FakeVideoStorage:

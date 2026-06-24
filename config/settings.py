@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     app_version: str = "1.0.0"
     app_env: str = "local"
     app_debug: bool = True
+    log_level: str | None = None
+    log_format: str = "pretty"
     cors_allowed_origins: Annotated[list[str], NoDecode] = []
     database_url: str
     video_storage_path: str = "/app/storage/videos"
@@ -39,6 +41,24 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
+
+    @field_validator("log_format")
+    @classmethod
+    def validate_log_format(cls, value: str) -> str:
+        normalized = value.lower().strip()
+        if normalized not in {"pretty", "json"}:
+            raise ValueError("log_format must be 'pretty' or 'json'")
+        return normalized
+
+    @field_validator("log_level")
+    @classmethod
+    def validate_log_level(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.upper().strip()
+        if normalized not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
+            raise ValueError("log_level must be a standard logging level")
+        return normalized
 
     model_config = SettingsConfigDict(
         env_file=".env",

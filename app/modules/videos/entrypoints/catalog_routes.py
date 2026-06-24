@@ -1,4 +1,3 @@
-import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -19,10 +18,11 @@ from app.shared.infrastructure.providers.steam.steamgriddb_client import (
     SteamGridDbConfigurationError,
     SteamGridDbError,
 )
+from app.shared.infrastructure.logging import get_logger
 
 
 router = APIRouter(prefix="/category", tags=["category"])
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 VERTICAL_GRID_DIMENSIONS = "600x900"
 HORIZONTAL_GRID_DIMENSIONS = "920x430"
 

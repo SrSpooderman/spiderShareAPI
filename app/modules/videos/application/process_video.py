@@ -1,12 +1,12 @@
-import logging
 from time import perf_counter
 from uuid import UUID
 
 from app.modules.videos.domain.ports import VideoRepository, VideoTranscoder
 from app.modules.videos.domain.video import Video, VideoProcessingStatus
+from app.shared.infrastructure.logging import get_logger
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ProcessVideo:

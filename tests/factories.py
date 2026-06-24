@@ -81,6 +81,10 @@ def make_video_category(
     steamgriddb_game_id: int | None = None,
     thumbnail_vertical_url: str | None = None,
     thumbnail_horizontal_url: str | None = None,
+    thumbnail_vertical_image: bytes | None = None,
+    thumbnail_vertical_content_type: str | None = None,
+    thumbnail_horizontal_image: bytes | None = None,
+    thumbnail_horizontal_content_type: str | None = None,
     created_at: datetime | None = None,
     updated_at: datetime | None = None,
 ) -> VideoCategory:
@@ -93,6 +97,10 @@ def make_video_category(
         steamgriddb_game_id=steamgriddb_game_id,
         thumbnail_vertical_url=thumbnail_vertical_url,
         thumbnail_horizontal_url=thumbnail_horizontal_url,
+        thumbnail_vertical_image=thumbnail_vertical_image,
+        thumbnail_vertical_content_type=thumbnail_vertical_content_type,
+        thumbnail_horizontal_image=thumbnail_horizontal_image,
+        thumbnail_horizontal_content_type=thumbnail_horizontal_content_type,
         created_at=created_at or now,
         updated_at=updated_at or now,
     )

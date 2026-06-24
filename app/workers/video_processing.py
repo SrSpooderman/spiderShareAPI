@@ -1,4 +1,3 @@
-import logging
 from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID
 
@@ -13,6 +12,7 @@ from app.shared.infrastructure.db.session import SessionLocal
 from app.shared.infrastructure.jaimito_logging import JaimitoWorkerLogger
 from app.shared.infrastructure.logging import (
     configure_logging,
+    get_logger,
     reset_job_id,
     reset_video_id,
     reset_worker_name,
@@ -23,7 +23,7 @@ from app.shared.infrastructure.logging import (
 from app.shared.infrastructure.providers.storage.video_transcoder import FfmpegVideoTranscoder
 from config.settings import settings
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 jaimito_logger = JaimitoWorkerLogger(logger)
 
 

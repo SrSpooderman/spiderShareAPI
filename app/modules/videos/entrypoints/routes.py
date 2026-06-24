@@ -1,6 +1,5 @@
 import hashlib
 import json
-import logging
 from uuid import UUID
 
 from fastapi import (
@@ -67,12 +66,13 @@ from app.modules.videos.wiring import (
     get_video_storage,
 )
 from app.shared.infrastructure.idempotency import IdempotencyRepository
+from app.shared.infrastructure.logging import get_logger
 from app.shared.wiring import get_idempotency_repository
 from config.settings import settings
 
 
 router = APIRouter(tags=["videos"])
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 VIDEO_UPLOAD_IDEMPOTENCY_SCOPE = "videos.upload"
 
 

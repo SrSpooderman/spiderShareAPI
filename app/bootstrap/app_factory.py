@@ -1,4 +1,3 @@
-import logging
 from time import perf_counter
 
 from fastapi import FastAPI
@@ -14,6 +13,7 @@ from app.modules.videos.entrypoints.interactions_routes import router as interac
 from app.modules.videos.entrypoints.routes import router as videos_router
 from app.shared.infrastructure.logging import (
     configure_logging,
+    get_logger,
     new_request_id,
     reset_auth_status,
     reset_client_ip,
@@ -33,7 +33,7 @@ from app.shared.infrastructure.logging import (
 from config.settings import settings
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _client_ip(request: Request) -> str:

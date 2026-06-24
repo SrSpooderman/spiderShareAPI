@@ -1,5 +1,7 @@
 import logging
 import logging.config
+import json
+import re
 from contextvars import ContextVar
 from uuid import uuid4
 
@@ -33,8 +35,52 @@ class RequestContextFilter(logging.Filter):
         return True
 
 
+class SensitiveDataFilter(logging.Filter):
+    """Avoid leaking credentials if a dependency includes them in an error."""
+
+    _patterns = (
+        re.compile(r"(?i)(authorization|token|password|secret|api[_-]?key)(=|:)([^\s,;]+)"),
+        re.compile(r"(?i)bearer\s+[^\s,;]+"),
+    )
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        message = self._patterns[0].sub(
+            lambda match: f"{match.group(1)}{match.group(2)}[REDACTED]",
+            message,
+        )
+        message = self._patterns[1].sub("Bearer [REDACTED]", message)
+        record.msg = message
+        record.args = ()
+        return True
+
+
+class JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "timestamp": self.formatTime(record, "%Y-%m-%dT%H:%M:%S%z"),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+            "request_id": getattr(record, "request_id", "-"),
+            "client_ip": getattr(record, "client_ip", "-"),
+            "auth_status": getattr(record, "auth_status", "anonymous"),
+            "user_id": getattr(record, "user_id", "-"),
+            "username": getattr(record, "username", "-"),
+            "user_role": getattr(record, "user_role", "-"),
+            "worker": getattr(record, "worker_name", "-"),
+            "job_id": getattr(record, "job_id", "-"),
+            "video_id": getattr(record, "video_id", "-"),
+        }
+        if record.exc_info:
+            payload["exception"] = self.formatException(record.exc_info)
+        return json.dumps(payload, ensure_ascii=False, default=str)
+
+
 def configure_logging() -> None:
-    level = "DEBUG" if settings.app_env.lower() in {"local", "dev", "development"} else "INFO"
+    default_level = "DEBUG" if settings.app_env.lower() in {"local", "dev", "development"} else "INFO"
+    level = (settings.log_level or default_level).upper()
+    formatter = "json" if settings.log_format == "json" else "pretty"
 
     logging.config.dictConfig(
         {
@@ -44,9 +90,10 @@ def configure_logging() -> None:
                 "request_context": {
                     "()": RequestContextFilter,
                 },
+                "sensitive_data": {"()": SensitiveDataFilter},
             },
             "formatters": {
-                "console": {
+                "pretty": {
                     "format": (
                         "%(asctime)s %(levelname)s [%(name)s] "
                         "request_id=%(request_id)s client_ip=%(client_ip)s "
@@ -57,12 +104,13 @@ def configure_logging() -> None:
                     ),
                     "datefmt": "%Y-%m-%d %H:%M:%S",
                 },
+                "json": {"()": JsonFormatter},
             },
             "handlers": {
                 "console": {
                     "class": "logging.StreamHandler",
-                    "formatter": "console",
-                    "filters": ["request_context"],
+                    "formatter": formatter,
+                    "filters": ["request_context", "sensitive_data"],
                     "stream": "ext://sys.stdout",
                 },
             },
@@ -89,6 +137,11 @@ def configure_logging() -> None:
             },
         }
     )
+
+
+def get_logger(name: str) -> logging.Logger:
+    """Return a logger governed by SpiderShare's central logging policy."""
+    return logging.getLogger(name)
 
 
 def new_request_id() -> str:

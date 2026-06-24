@@ -1,4 +1,3 @@
-import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import ValidationError
@@ -27,10 +26,11 @@ from app.modules.auth.wiring import (
     require_admin,
 )
 from app.modules.users.domain.user import User, can_create_user_with_role
+from app.shared.infrastructure.logging import get_logger
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def _login_request_from_http_request(request: Request) -> LoginRequest:
