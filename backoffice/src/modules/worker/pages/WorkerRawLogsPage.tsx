@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -40,7 +41,7 @@ export function WorkerRawLogsPage() {
     return () => window.clearInterval(interval);
   }, [autoRefresh, refetch]);
 
-  function changeFilter(setter: (value: string) => void, value: string) {
+  function changeFilter<T extends string>(setter: Dispatch<SetStateAction<T>>, value: T) {
     setter(value);
     setOffset(0);
   }
@@ -51,7 +52,7 @@ export function WorkerRawLogsPage() {
       <article className="panel">
         <div className="toolbar event-console-filters">
           <input aria-label="Buscar eventos" placeholder="Texto en evento o mensaje" value={search} onChange={(event) => changeFilter(setSearch, event.target.value)} />
-          <select aria-label="Filtrar nivel" value={level} onChange={(event) => changeFilter(setLevel, event.target.value)}><option value="">Todos los niveles</option><option value="info">info</option><option value="warning">warning</option><option value="error">error</option></select>
+          <select aria-label="Filtrar nivel" value={level} onChange={(event) => changeFilter(setLevel, event.target.value as WorkerEvent["level"] | "")}><option value="">Todos los niveles</option><option value="info">info</option><option value="warning">warning</option><option value="error">error</option></select>
           <input aria-label="Filtrar tipo de evento" placeholder="Tipo de evento" value={eventType} onChange={(event) => changeFilter(setEventType, event.target.value)} />
           <input aria-label="Filtrar worker" placeholder="Worker" value={workerName} onChange={(event) => changeFilter(setWorkerName, event.target.value)} />
           <input aria-label="Filtrar video" placeholder="Video ID" value={videoId} onChange={(event) => changeFilter(setVideoId, event.target.value)} />
