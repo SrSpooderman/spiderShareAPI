@@ -1,4 +1,5 @@
 import pytest
+from uuid import uuid4
 
 from app.modules.auth.wiring import get_current_user, get_optional_current_user
 from app.modules.videos.wiring import (
@@ -204,6 +205,77 @@ def test_list_and_create_custom_video_categories(
     assert body["steam_appid"] is None
     assert body["thumbnail_vertical_url"] == "https://cdn.example.com/indie-v.jpg"
     assert video_category_repository.created[0].name == "Indie"
+
+
+@pytest.mark.http
+def test_update_video_category(
+    app,
+    client,
+    user_factory,
+    video_category_repository,
+) -> None:
+    admin = user_factory(role="admin")
+    category = video_category_repository.add(
+        make_video_category(
+            name="Old name",
+            thumbnail_vertical_url="https://cdn.example.com/old-v.jpg",
+            thumbnail_horizontal_url="https://cdn.example.com/old-h.jpg",
+        )
+    )
+    app.dependency_overrides[get_video_category_repository] = (
+        lambda: video_category_repository
+    )
+    app.dependency_overrides[get_current_user] = lambda: admin
+
+    response = client.patch(
+        f"/category/{category.id}",
+        json={
+            "name": "New name",
+            "thumbnail_vertical_url": "https://cdn.example.com/new-v.jpg",
+            "thumbnail_horizontal_url": "https://cdn.example.com/new-h.jpg",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == str(category.id)
+    assert body["name"] == "New name"
+    assert body["source"] == "custom"
+    assert body["thumbnail_vertical_url"] == "https://cdn.example.com/new-v.jpg"
+    assert body["thumbnail_horizontal_url"] == "https://cdn.example.com/new-h.jpg"
+
+    response = client.patch(
+        f"/category/{uuid4()}",
+        json={"name": "Missing"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Video category not found"
+
+
+@pytest.mark.http
+def test_delete_video_category(
+    app,
+    client,
+    user_factory,
+    video_category_repository,
+) -> None:
+    admin = user_factory(role="admin")
+    category = video_category_repository.add(make_video_category(name="To delete"))
+    app.dependency_overrides[get_video_category_repository] = (
+        lambda: video_category_repository
+    )
+    app.dependency_overrides[get_current_user] = lambda: admin
+
+    response = client.delete(f"/category/{category.id}")
+
+    assert response.status_code == 204
+    assert video_category_repository.get_by_id(category.id) is None
+
+    response = client.delete(f"/category/{category.id}")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Video category not found"
 
 
 @pytest.mark.http

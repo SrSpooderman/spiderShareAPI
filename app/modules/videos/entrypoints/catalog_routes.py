@@ -1,5 +1,7 @@
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from app.modules.auth.wiring import require_admin
 from app.modules.steam.wiring import get_steamgriddb_client
@@ -125,3 +127,53 @@ def import_steam_video_category(
     )
     logger.info("Steam video category imported category_id=%s steam_appid=%s steamgriddb_game_id=%s requested_by=%s has_vertical=%s has_horizontal=%s", category.id, category.steam_appid, category.steamgriddb_game_id, current_user.id, category.thumbnail_vertical_url is not None, category.thumbnail_horizontal_url is not None)
     return VideoCategoryResponse.from_domain(category)
+
+
+@router.patch("/{category_id}", response_model=VideoCategoryResponse)
+def update_video_category(
+    category_id: UUID,
+    request: VideoCategoryCreateRequest,
+    current_user: User = Depends(require_admin),
+    repository: VideoCategoryRepository = Depends(get_video_category_repository),
+) -> VideoCategoryResponse:
+    category = repository.update(
+        category_id,
+        VideoCategoryCreate(
+            name=request.name,
+            thumbnail_vertical_url=request.thumbnail_vertical_url,
+            thumbnail_horizontal_url=request.thumbnail_horizontal_url,
+        ),
+    )
+    if category is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video category not found",
+        )
+
+    logger.info(
+        "Video category updated category_id=%s requested_by=%s",
+        category.id,
+        current_user.id,
+    )
+    return VideoCategoryResponse.from_domain(category)
+
+
+@router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_video_category(
+    category_id: UUID,
+    current_user: User = Depends(require_admin),
+    repository: VideoCategoryRepository = Depends(get_video_category_repository),
+) -> Response:
+    deleted = repository.delete(category_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video category not found",
+        )
+
+    logger.info(
+        "Video category deleted category_id=%s requested_by=%s",
+        category_id,
+        current_user.id,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -81,6 +81,8 @@ class SqlAlchemyVideoCategoryRepository(VideoCategoryRepository):
         if model is None:
             return None
         model.name = category.name
+        model.thumbnail_vertical_url = category.thumbnail_vertical_url
+        model.thumbnail_horizontal_url = category.thumbnail_horizontal_url
         model.thumbnail_vertical_image = category.thumbnail_vertical_image
         model.thumbnail_vertical_content_type = category.thumbnail_vertical_content_type
         model.thumbnail_horizontal_image = category.thumbnail_horizontal_image
