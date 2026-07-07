@@ -75,6 +75,13 @@ def test_list_videos_supports_pagination_filters_and_popularity_order(
         "username": "owner",
         "display_name": "Owner",
     }
+    assert body["items"][0]["original_filename"] == matching_high.original_filename
+    assert body["items"][0]["download_url"] == f"/videos/{matching_high.id}/download"
+    assert body["items"][0]["is_owner"] is False
+    assert body["items"][0]["can_edit"] is False
+    assert body["items"][0]["can_delete"] is False
+    assert body["items"][0]["is_favorite"] is False
+    assert body["items"][0]["reactions"] == []
 
     response = client.get(
         "/videos",
@@ -904,6 +911,8 @@ def test_favorite_routes_and_my_favorites(
     assert response.status_code == 200
     assert response.json()["total"] == 1
     assert response.json()["items"][0]["id"] == str(video.id)
+    assert response.json()["items"][0]["download_url"] == f"/videos/{video.id}/download"
+    assert response.json()["items"][0]["is_favorite"] is True
 
     response = client.delete(f"/interactions/videos/{video.id}/favorite")
 

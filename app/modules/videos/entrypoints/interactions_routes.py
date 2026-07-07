@@ -17,7 +17,12 @@ from app.modules.videos.entrypoints.schemas import (
     VideoReactionRequest,
     VideoReactionResponse,
 )
-from app.modules.videos.wiring import get_favorite_video, get_react_to_video
+from app.modules.videos.wiring import (
+    get_favorite_video,
+    get_react_to_video,
+    get_video_repository,
+)
+from app.modules.videos.domain.ports import VideoRepository
 from config.settings import settings
 
 
@@ -61,9 +66,26 @@ def list_my_video_favorites(
     offset: int = Query(default=0, ge=0),
     current_user: User = Depends(get_current_user),
     favorite_video_use_case: FavoriteVideo = Depends(get_favorite_video),
+    react_to_video: ReactToVideo = Depends(get_react_to_video),
+    video_repository: VideoRepository = Depends(get_video_repository),
 ) -> VideoListResponse:
     result = favorite_video_use_case.list_user_favorites(current_user, limit=limit, offset=offset)
-    return VideoListResponse.from_result(result, limit=limit, offset=offset)
+    favorites_by_video_id = {
+        video.id: video_repository.is_favorite(video.id, current_user.id)
+        for video in result.items
+    }
+    reaction_counts_by_video_id = {
+        video.id: react_to_video.get_counts(video.id, current_user)
+        for video in result.items
+    }
+    return VideoListResponse.from_result(
+        result,
+        limit=limit,
+        offset=offset,
+        current_user=current_user,
+        favorites_by_video_id=favorites_by_video_id,
+        reaction_counts_by_video_id=reaction_counts_by_video_id,
+    )
 
 
 @router.get("/videos/{video_id}/reactions", response_model=list[VideoReactionCountResponse])

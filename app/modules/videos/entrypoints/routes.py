@@ -455,6 +455,8 @@ def list_videos(
     offset: int = Query(default=0, ge=0),
     current_user: User | None = Depends(get_optional_current_user),
     list_videos_use_case: ListVideos = Depends(get_list_videos),
+    react_to_video: ReactToVideo = Depends(get_react_to_video),
+    video_repository: VideoRepository = Depends(get_video_repository),
 ) -> VideoListResponse:
     result = list_videos_use_case.execute(
         ListVideosQuery(
@@ -468,7 +470,26 @@ def list_videos(
         current_user,
     )
 
-    return VideoListResponse.from_result(result, limit=limit, offset=offset)
+    favorites_by_video_id = {
+        video.id: (
+            current_user is not None
+            and video_repository.is_favorite(video.id, current_user.id)
+        )
+        for video in result.items
+    }
+    reaction_counts_by_video_id = {
+        video.id: react_to_video.get_counts(video.id, current_user)
+        for video in result.items
+    }
+
+    return VideoListResponse.from_result(
+        result,
+        limit=limit,
+        offset=offset,
+        current_user=current_user,
+        favorites_by_video_id=favorites_by_video_id,
+        reaction_counts_by_video_id=reaction_counts_by_video_id,
+    )
 
 
 @router.get("/videos/{video_id}", response_model=VideoDetailResponse)

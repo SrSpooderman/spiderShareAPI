@@ -589,7 +589,7 @@ Campos relevantes:
 - `variants`: salidas procesadas por FFmpeg.
 - `latest_processing_error`: ultimo fallo de procesado, si existe.
 - `categories` y `tags`: metadata publica.
-- `is_owner`, `can_edit`, `can_delete`, `is_favorite`, `reactions`: aparecen en detalle.
+- `is_owner`, `can_edit`, `can_delete`, `is_favorite`, `reactions`: aparecen tanto en `GET /videos` como en `GET /videos/{video_id}`.
 
 ## Subida y Procesado de Videos
 

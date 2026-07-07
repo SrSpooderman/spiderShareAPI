@@ -257,7 +257,7 @@ class VideoDetailResponse(VideoSummaryResponse):
 
 
 class VideoListResponse(BaseModel):
-    items: list[VideoSummaryResponse]
+    items: list[VideoDetailResponse]
     total: int
     limit: int
     offset: int
@@ -269,9 +269,23 @@ class VideoListResponse(BaseModel):
         *,
         limit: int,
         offset: int,
+        current_user: User | None,
+        favorites_by_video_id: dict[UUID, bool] | None = None,
+        reaction_counts_by_video_id: dict[UUID, dict[str, int]] | None = None,
     ) -> "VideoListResponse":
+        favorites_by_video_id = favorites_by_video_id or {}
+        reaction_counts_by_video_id = reaction_counts_by_video_id or {}
+
         return cls(
-            items=[VideoSummaryResponse.from_domain(video) for video in result.items],
+            items=[
+                VideoDetailResponse.from_domain(
+                    video,
+                    current_user=current_user,
+                    is_favorite=favorites_by_video_id.get(video.id, False),
+                    reaction_counts=reaction_counts_by_video_id.get(video.id, {}),
+                )
+                for video in result.items
+            ],
             total=result.total,
             limit=limit,
             offset=offset,
