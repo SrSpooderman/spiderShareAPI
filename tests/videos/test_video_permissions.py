@@ -38,6 +38,7 @@ def make_video(*, owner_id=None, is_registered_only: bool = False) -> Video:
         height=None,
         aspect_ratio=None,
         duration_seconds=None,
+        source_created_at=None,
         thumbnail_path=None,
         variants=[],
         latest_processing_error=None,

@@ -36,6 +36,7 @@ class AdminVideoSummaryResponse(CamelModel):
     processing_status: VideoProcessingStatus = Field(alias="processingStatus")
     visibility: str
     duration_seconds: float | None = Field(alias="durationSeconds")
+    source_created_at: datetime | None = Field(alias="sourceCreatedAt")
     created_at: datetime = Field(alias="createdAt")
     latest_processing_error: AdminProcessingErrorResponse | None = Field(
         alias="latestProcessingError",

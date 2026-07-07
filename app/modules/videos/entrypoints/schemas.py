@@ -204,6 +204,7 @@ class VideoDetailResponse(VideoSummaryResponse):
     width: int | None
     height: int | None
     duration_seconds: float | None
+    source_created_at: datetime | None
     thumbnail_path: str | None
     variants: list[VideoVariantResponse]
     is_owner: bool
@@ -240,6 +241,7 @@ class VideoDetailResponse(VideoSummaryResponse):
             width=video.width,
             height=video.height,
             duration_seconds=video.duration_seconds,
+            source_created_at=video.source_created_at,
             thumbnail_path=video.thumbnail_path,
             variants=[
                 VideoVariantResponse.from_domain(variant)

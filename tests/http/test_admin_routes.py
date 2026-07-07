@@ -40,6 +40,7 @@ class FakeAdminReadModel:
             processing_status=VideoProcessingStatus.FAILED,
             visibility="public",
             duration_seconds=None,
+            source_created_at=None,
             created_at=datetime(2026, 6, 11, tzinfo=timezone.utc),
             latest_processing_error=None,
         )

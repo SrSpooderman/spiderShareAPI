@@ -57,6 +57,7 @@ def test_video_model_to_domain_preserves_video_fields() -> None:
     category_id = uuid4()
     tag_id = uuid4()
     now = utc_now()
+    source_created_at = now
     model = VideoModel(
         id=str(video_id),
         owner_id=str(owner_id),
@@ -70,6 +71,7 @@ def test_video_model_to_domain_preserves_video_fields() -> None:
         width=1920,
         height=1080,
         aspect_ratio=VideoAspectRatio.RATIO_16_9.value,
+        source_created_at=source_created_at,
         favorite_count=3,
         created_at=now,
         updated_at=now,
@@ -109,6 +111,7 @@ def test_video_model_to_domain_preserves_video_fields() -> None:
     assert video.description == "Clip context"
     assert video.original_filename == "clip.mp4"
     assert video.edited is True
+    assert video.source_created_at == source_created_at
     assert video.processing_status == VideoProcessingStatus.READY
     assert video.aspect_ratio == VideoAspectRatio.RATIO_16_9
     assert video.favorite_count == 3

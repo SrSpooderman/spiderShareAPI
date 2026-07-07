@@ -223,6 +223,7 @@ class SqlAlchemyVideoRepository(VideoRepository):
         model.height = result.height
         model.aspect_ratio = result.aspect_ratio.value
         model.duration_seconds = result.duration_seconds
+        model.source_created_at = result.source_created_at or model.created_at
         model.thumbnail_path = result.thumbnail_path
         model.variants.clear()
         self.session.flush()
@@ -286,6 +287,7 @@ class SqlAlchemyVideoRepository(VideoRepository):
         model.height = None
         model.aspect_ratio = None
         model.duration_seconds = None
+        model.source_created_at = None
         model.thumbnail_path = None
         model.variants.clear()
         self.session.commit()

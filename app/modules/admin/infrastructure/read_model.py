@@ -407,6 +407,7 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
             processing_status=VideoProcessingStatus(model.processing_status),
             visibility="registered" if model.is_registered_only else "public",
             duration_seconds=model.duration_seconds,
+            source_created_at=model.source_created_at,
             created_at=model.created_at,
             latest_processing_error=(
                 AdminProcessingErrorResponse(

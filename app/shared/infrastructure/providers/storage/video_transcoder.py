@@ -2,6 +2,7 @@ import json
 import shutil
 import subprocess
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from uuid import UUID
 
@@ -21,6 +22,7 @@ class _SourceMetadata:
     width: int
     height: int
     duration_seconds: float
+    source_created_at: datetime | None
 
 
 @dataclass(frozen=True)
@@ -98,6 +100,7 @@ class FfmpegVideoTranscoder(VideoTranscoder):
             height=original_geometry.height,
             aspect_ratio=original_geometry.aspect_ratio,
             duration_seconds=source.duration_seconds,
+            source_created_at=source.source_created_at,
             thumbnail_path=self._relative_path(thumbnail_path),
             variants=[
                 self._variant(
@@ -125,9 +128,10 @@ class FfmpegVideoTranscoder(VideoTranscoder):
                 "-select_streams",
                 "v:0",
                 "-show_entries",
-                "stream=width,height",
-                "-show_entries",
-                "format=duration",
+                (
+                    "stream=width,height:stream_tags=creation_time:"
+                    "format=duration:format_tags=creation_time"
+                ),
                 "-of",
                 "json",
                 str(path),
@@ -145,7 +149,26 @@ class FfmpegVideoTranscoder(VideoTranscoder):
             width=int(stream["width"]),
             height=int(stream["height"]),
             duration_seconds=float(metadata["format"]["duration"]),
+            source_created_at=self._source_created_at(metadata),
         )
+
+    def _source_created_at(self, metadata: dict) -> datetime | None:
+        candidates = [
+            metadata.get("format", {}).get("tags", {}).get("creation_time"),
+            *[
+                stream.get("tags", {}).get("creation_time")
+                for stream in metadata.get("streams", [])
+            ],
+        ]
+        for value in candidates:
+            if not value:
+                continue
+            try:
+                return datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+
+        return None
 
     def _target_geometry(self, width: int, height: int) -> _OutputGeometry:
         source_ratio = width / height

@@ -280,6 +280,7 @@ class FakeVideoRepository:
             height=result.height,
             aspect_ratio=result.aspect_ratio,
             duration_seconds=result.duration_seconds,
+            source_created_at=result.source_created_at or video.created_at,
             thumbnail_path=result.thumbnail_path,
             variants=variants,
             updated_at=now,
@@ -333,6 +334,7 @@ class FakeVideoRepository:
             height=None,
             aspect_ratio=None,
             duration_seconds=None,
+            source_created_at=None,
             thumbnail_path=None,
             variants=[],
         )
@@ -660,6 +662,7 @@ class FakeVideoTranscoder:
             height=1080,
             aspect_ratio=VideoAspectRatio.RATIO_16_9,
             duration_seconds=12.5,
+            source_created_at=None,
             thumbnail_path=f"thumbnails/{video_id}/thumbnail.jpg",
             variants=[
                 VideoVariantCreate(

@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
@@ -60,6 +61,7 @@ def test_transcoder_generates_only_low_h264_variant(tmp_path, monkeypatch) -> No
             width=1920,
             height=1080,
             duration_seconds=60.0,
+            source_created_at=None,
         )
 
     def fake_run_ffmpeg(command: list[str]) -> None:
@@ -79,3 +81,29 @@ def test_transcoder_generates_only_low_h264_variant(tmp_path, monkeypatch) -> No
     assert [variant.codec for variant in result.variants] == ["h264"]
     assert len(commands) == 2
     assert all("libaom-av1" not in command for command in commands)
+
+
+@pytest.mark.unit
+def test_transcoder_reads_source_creation_time_from_format_metadata() -> None:
+    transcoder = FfmpegVideoTranscoder(root_path="/tmp/videos")
+
+    source_created_at = transcoder._source_created_at(
+        {
+            "format": {
+                "tags": {
+                    "creation_time": "2026-07-07T18:22:10.000000Z",
+                },
+            },
+            "streams": [],
+        }
+    )
+
+    assert source_created_at == datetime(
+        2026,
+        7,
+        7,
+        18,
+        22,
+        10,
+        tzinfo=timezone.utc,
+    )
