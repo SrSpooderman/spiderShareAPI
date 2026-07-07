@@ -13,6 +13,7 @@ class UpdateVideoCommand:
     title: str | None = None
     description: str | None = None
     is_registered_only: bool | None = None
+    edited: bool | None = None
     category_ids: list[UUID] | None = None
     tags: list[str] | None = None
 
@@ -35,6 +36,7 @@ class UpdateVideo:
             title=command.title,
             description=command.description,
             is_registered_only=command.is_registered_only,
+            edited=command.edited,
             category_ids=command.category_ids,
             tags=command.tags,
         )

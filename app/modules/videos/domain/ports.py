@@ -85,6 +85,7 @@ class VideoRepository(ABC):
         title: str | None = None,
         description: str | None = None,
         is_registered_only: bool | None = None,
+        edited: bool | None = None,
         category_ids: list[UUID] | None = None,
         tags: list[str] | None = None,
     ) -> Video | None:

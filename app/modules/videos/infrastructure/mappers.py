@@ -84,6 +84,7 @@ def video_create_to_model(video: VideoCreate) -> VideoModel:
         description=video.description,
         original_filename=video.original_filename,
         is_registered_only=video.is_registered_only,
+        edited=video.edited,
     )
     if video.id is not None:
         model.id = str(video.id)

@@ -233,6 +233,7 @@ class FakeVideoRepository:
                 description=video.description,
                 original_filename=video.original_filename,
                 is_registered_only=video.is_registered_only,
+                edited=video.edited,
             )
         )
 
@@ -345,6 +346,7 @@ class FakeVideoRepository:
         title: str | None = None,
         description: str | None = None,
         is_registered_only: bool | None = None,
+        edited: bool | None = None,
         category_ids: list[UUID] | None = None,
         tags: list[str] | None = None,
     ) -> Video | None:
@@ -356,12 +358,13 @@ class FakeVideoRepository:
             "title": title,
             "description": description,
             "is_registered_only": is_registered_only,
+            "edited": edited,
             "category_ids": category_ids,
             "tags": tags,
         }
         self.updated.append((video_id, changes))
 
-        edited_at = utc_now()
+        now = utc_now()
         updated_video = replace(
             video,
             title=title if title is not None else video.title,
@@ -371,9 +374,8 @@ class FakeVideoRepository:
                 if is_registered_only is not None
                 else video.is_registered_only
             ),
-            edited=True,
-            edited_at=edited_at,
-            updated_at=edited_at,
+            edited=edited if edited is not None else video.edited,
+            updated_at=now,
         )
         self.videos[video_id] = updated_video
 
@@ -867,8 +869,9 @@ class FakeSteamGridDbClient:
         *,
         dimensions: str,
         limit: int = 1,
+        page: int | None = None,
     ) -> list[dict]:
         if self.error is not None:
             raise self.error
-        self.grid_requests.append((game_id, dimensions, limit))
+        self.grid_requests.append((game_id, dimensions, limit, page))
         return self.grids_by_game_dimensions.get((game_id, dimensions), [])

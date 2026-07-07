@@ -472,7 +472,10 @@ Parametros:
 | `GET` | `/category` | Publico | Lista categorias disponibles para videos. |
 | `POST` | `/category` | Admin | Crea una categoria custom con thumbnails opcionales. |
 | `GET` | `/category/steam/search` | Admin | Busca juegos en SteamGridDB para importar categoria. |
-| `POST` | `/category/steam/import` | Admin | Importa/actualiza categoria desde SteamGridDB y guarda grids. |
+| `GET` | `/category/steam/games/{game_id}/grids` | Admin | Lista grids de SteamGridDB con paginado para seleccionar thumbnails. |
+| `POST` | `/category/steam/import` | Admin | Importa/actualiza categoria desde SteamGridDB y guarda los grids elegidos o los primeros disponibles. |
+| `PATCH` | `/category/{category_id}` | Admin | Edita una categoria. |
+| `DELETE` | `/category/{category_id}` | Admin | Elimina una categoria y sus asociaciones con videos. |
 | `POST` | `/videos/{video_id}/processing/retry` | Super admin | Limpia salidas de procesado y reencola un video no completo. |
 | `GET` | `/videos` | Publico | Lista videos visibles. Acepta token opcional para incluir privados accesibles. |
 | `GET` | `/videos/{video_id}` | Publico | Detalle si el video es visible para el usuario actual o anonimo. |
@@ -529,6 +532,22 @@ curl -X POST http://localhost:8000/category/steam/import \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
   -d '{"steam_appid":400}'
+```
+
+Revisar grids antes de importar:
+
+```bash
+curl "http://localhost:8000/category/steam/games/22/grids?dimensions=600x900&limit=20&offset=0" \
+  -H "Authorization: Bearer <admin-token>"
+```
+
+Importar con imagenes elegidas:
+
+```bash
+curl -X POST http://localhost:8000/category/steam/import \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"steamgriddb_game_id":22,"thumbnail_vertical_url":"https://cdn.example.com/v.jpg","thumbnail_horizontal_url":"https://cdn.example.com/h.jpg"}'
 ```
 
 Crear categoria custom:

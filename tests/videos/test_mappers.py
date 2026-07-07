@@ -36,6 +36,7 @@ def test_video_create_to_model_preserves_video_fields() -> None:
         description="Clip context",
         original_filename="clip.mp4",
         is_registered_only=True,
+        edited=True,
     )
 
     model = video_create_to_model(video_create)
@@ -46,6 +47,7 @@ def test_video_create_to_model_preserves_video_fields() -> None:
     assert model.description == "Clip context"
     assert model.original_filename == "clip.mp4"
     assert model.is_registered_only is True
+    assert model.edited is True
 
 
 @pytest.mark.unit

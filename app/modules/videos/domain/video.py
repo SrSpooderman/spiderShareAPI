@@ -151,6 +151,7 @@ class VideoCreate:
     original_filename: str
     id: UUID | None = None
     is_registered_only: bool = False
+    edited: bool = False
     category_ids: list[UUID] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
 

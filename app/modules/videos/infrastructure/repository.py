@@ -1,4 +1,3 @@
-from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -301,6 +300,7 @@ class SqlAlchemyVideoRepository(VideoRepository):
         title: str | None = None,
         description: str | None = None,
         is_registered_only: bool | None = None,
+        edited: bool | None = None,
         category_ids: list[UUID] | None = None,
         tags: list[str] | None = None,
     ) -> Video | None:
@@ -315,13 +315,13 @@ class SqlAlchemyVideoRepository(VideoRepository):
             model.description = description
         if is_registered_only is not None:
             model.is_registered_only = is_registered_only
+        if edited is not None:
+            model.edited = edited
         if category_ids is not None:
             self._replace_category_assignments(model, category_ids)
         if tags is not None:
             self._replace_tag_assignments(model, tags)
 
-        model.edited = True
-        model.edited_at = datetime.now(timezone.utc)
         self.session.commit()
         model = self._get_model(video_id)
 

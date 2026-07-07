@@ -10,6 +10,8 @@ from app.modules.videos.domain.ports import VideoCategoryRepository
 from app.modules.videos.domain.video import VideoCategoryCreate, VideoCategorySource
 from app.modules.videos.entrypoints.schemas import (
     SteamGridDbGameResponse,
+    SteamGridDbGridListResponse,
+    SteamGridDbGridResponse,
     SteamVideoCategoryImportRequest,
     VideoCategoryCreateRequest,
     VideoCategoryResponse,
@@ -57,6 +59,23 @@ def _game_response(game: dict) -> SteamGridDbGameResponse | None:
     )
 
 
+def _grid_response(grid: dict) -> SteamGridDbGridResponse | None:
+    url = grid.get("url")
+    if not url:
+        return None
+    return SteamGridDbGridResponse(
+        id=grid.get("id"),
+        url=url,
+        thumb=grid.get("thumb"),
+        width=grid.get("width"),
+        height=grid.get("height"),
+        style=grid.get("style"),
+        nsfw=grid.get("nsfw"),
+        humor=grid.get("humor"),
+        epilepsy=grid.get("epilepsy"),
+    )
+
+
 @router.get("", response_model=list[VideoCategoryResponse])
 def list_video_categories(
     repository: VideoCategoryRepository = Depends(get_video_category_repository),
@@ -95,6 +114,44 @@ def search_steam_video_categories(
     return [response for game in games if (response := _game_response(game)) is not None]
 
 
+@router.get("/steam/games/{game_id}/grids", response_model=SteamGridDbGridListResponse)
+def list_steam_video_category_grids(
+    game_id: int,
+    dimensions: str = Query(default=VERTICAL_GRID_DIMENSIONS, max_length=20),
+    limit: int = Query(default=20, ge=1, le=50),
+    offset: int = Query(default=0, ge=0),
+    _current_user: User = Depends(require_admin),
+    client: SteamGridDbClient = Depends(get_steamgriddb_client),
+) -> SteamGridDbGridListResponse:
+    page = offset // limit + 1
+    page_offset = offset % limit
+    request_limit = limit + page_offset + 1
+    try:
+        grids = client.get_grids(
+            game_id,
+            dimensions=dimensions,
+            limit=request_limit,
+            page=page,
+        )
+    except (SteamGridDbConfigurationError, SteamGridDbError) as error:
+        raise _map_steamgriddb_error(error)
+
+    responses = [
+        response
+        for grid in grids
+        if (response := _grid_response(grid)) is not None
+    ]
+    items = responses[page_offset : page_offset + limit]
+    has_more = len(responses) > page_offset + limit
+    return SteamGridDbGridListResponse(
+        items=items,
+        limit=limit,
+        offset=offset,
+        has_more=has_more,
+        next_offset=offset + limit if has_more else None,
+    )
+
+
 @router.post("/steam/import", response_model=VideoCategoryResponse, status_code=status.HTTP_201_CREATED)
 def import_steam_video_category(
     request: SteamVideoCategoryImportRequest,
@@ -111,8 +168,12 @@ def import_steam_video_category(
         game_id, name = game.get("id"), game.get("name")
         if game_id is None or not name:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SteamGridDB game not found")
-        vertical_url = _best_grid_url(client.get_grids(game_id, dimensions=VERTICAL_GRID_DIMENSIONS))
-        horizontal_url = _best_grid_url(client.get_grids(game_id, dimensions=HORIZONTAL_GRID_DIMENSIONS))
+        vertical_url = request.thumbnail_vertical_url or _best_grid_url(
+            client.get_grids(game_id, dimensions=VERTICAL_GRID_DIMENSIONS)
+        )
+        horizontal_url = request.thumbnail_horizontal_url or _best_grid_url(
+            client.get_grids(game_id, dimensions=HORIZONTAL_GRID_DIMENSIONS)
+        )
     except HTTPException:
         raise
     except (SteamGridDbConfigurationError, SteamGridDbError) as error:

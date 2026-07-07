@@ -45,7 +45,7 @@ def test_list_videos_applies_visibility_filters_and_popularity_order(
 
 
 @pytest.mark.unit
-def test_update_video_marks_video_as_edited_for_owner(
+def test_update_video_only_sets_edited_when_requested_by_owner(
     user_factory,
     video_factory,
     video_repository,
@@ -60,8 +60,16 @@ def test_update_video_marks_video_as_edited_for_owner(
     )
 
     assert updated.title == "New title"
+    assert updated.edited is False
+    assert updated.edited_at is None
+
+    updated = update_video.execute(
+        UpdateVideoCommand(video_id=video.id, edited=True),
+        owner,
+    )
+
     assert updated.edited is True
-    assert updated.edited_at is not None
+    assert updated.edited_at is None
 
 
 @pytest.mark.unit
@@ -187,12 +195,14 @@ def test_upload_video_saves_file_and_creates_video(user_factory, video_storage) 
             original_filename="clip.mp4",
             content_type="video/mp4",
             file=BytesIO(b"video-bytes"),
+            edited=True,
             tags=["boss"],
         )
     )
 
     assert video.owner_id == user.id
     assert video.original_filename == "clip.mp4"
+    assert video.edited is True
     assert video_repository.created[0].id == video.id
     assert video_storage.saved[0]["video_id"] == video.id
     assert video_storage.saved[0]["content"] == b"video-bytes"

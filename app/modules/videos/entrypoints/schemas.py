@@ -299,9 +299,31 @@ class SteamGridDbGameResponse(BaseModel):
     verified: bool | None = None
 
 
+class SteamGridDbGridResponse(BaseModel):
+    id: int | None
+    url: str
+    thumb: str | None
+    width: int | None
+    height: int | None
+    style: str | None
+    nsfw: bool | None
+    humor: bool | None
+    epilepsy: bool | None
+
+
+class SteamGridDbGridListResponse(BaseModel):
+    items: list[SteamGridDbGridResponse]
+    limit: int
+    offset: int
+    has_more: bool
+    next_offset: int | None
+
+
 class SteamVideoCategoryImportRequest(BaseModel):
     steam_appid: int | None = Field(default=None, gt=0)
     steamgriddb_game_id: int | None = Field(default=None, gt=0)
+    thumbnail_vertical_url: str | None = Field(default=None, max_length=1000)
+    thumbnail_horizontal_url: str | None = Field(default=None, max_length=1000)
 
     @model_validator(mode="after")
     def at_least_one_external_id(self):
@@ -343,6 +365,7 @@ class VideoUpdateRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = Field(default=None, min_length=1, max_length=5000)
     is_registered_only: bool | None = None
+    edited: bool | None = None
     category_ids: list[UUID] | None = None
     tags: list[str] | None = None
 

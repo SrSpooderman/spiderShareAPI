@@ -45,17 +45,22 @@ class SteamGridDbClient:
         *,
         dimensions: str,
         limit: int = 1,
+        page: int | None = None,
     ) -> list[dict]:
+        params = {
+            "dimensions": dimensions,
+            "types": "static",
+            "nsfw": "false",
+            "humor": "false",
+            "epilepsy": "false",
+            "limit": limit,
+        }
+        if page is not None:
+            params["page"] = page
+
         data = self._get(
             f"/grids/game/{game_id}",
-            {
-                "dimensions": dimensions,
-                "types": "static",
-                "nsfw": "false",
-                "humor": "false",
-                "epilepsy": "false",
-                "limit": limit,
-            },
+            params,
         )
         return data.get("data", [])
 

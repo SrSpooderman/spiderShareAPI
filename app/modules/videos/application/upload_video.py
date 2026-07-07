@@ -15,6 +15,7 @@ class UploadVideoCommand:
     content_type: str | None
     file: BinaryIO
     is_registered_only: bool = False
+    edited: bool = False
     category_ids: list[UUID] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
 
@@ -46,6 +47,7 @@ class UploadVideo:
                     description=command.description,
                     original_filename=command.original_filename,
                     is_registered_only=command.is_registered_only,
+                    edited=command.edited,
                     category_ids=command.category_ids,
                     tags=command.tags,
                 )

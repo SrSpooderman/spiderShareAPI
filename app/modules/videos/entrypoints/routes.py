@@ -178,6 +178,7 @@ async def _video_upload_request_hash(
     title: str,
     description: str,
     is_registered_only: bool,
+    edited: bool,
     category_ids: list[UUID],
     tags: list[str],
 ) -> str:
@@ -186,6 +187,7 @@ async def _video_upload_request_hash(
         "title": title,
         "description": description,
         "is_registered_only": is_registered_only,
+        "edited": edited,
         "category_ids": sorted(str(category_id) for category_id in category_ids),
         "tags": sorted(tags),
         "filename": file.filename or "video",
@@ -290,6 +292,7 @@ async def upload_video(
     title: str = Form(..., min_length=1, max_length=255),
     description: str | None = Form(default=None, max_length=5000),
     is_registered_only: bool = Form(default=False),
+    edited: bool = Form(default=False),
     category_ids: list[UUID] = Form(default=[]),
     tags: list[str] = Form(default=[]),
     current_user: User = Depends(get_current_user),
@@ -311,6 +314,7 @@ async def upload_video(
         title=normalized_title,
         description=normalized_description,
         is_registered_only=is_registered_only,
+        edited=edited,
         category_ids=category_ids,
         tags=normalized_tags,
     )
@@ -336,6 +340,7 @@ async def upload_video(
                 content_type=file.content_type,
                 file=file.file,
                 is_registered_only=is_registered_only,
+                edited=edited,
                 category_ids=category_ids,
                 tags=normalized_tags,
             )
@@ -596,6 +601,7 @@ def update_video(
                     if "is_registered_only" in fields_set
                     else None
                 ),
+                edited=request.edited if "edited" in fields_set else None,
                 category_ids=(
                     request.category_ids if "category_ids" in fields_set else None
                 ),
