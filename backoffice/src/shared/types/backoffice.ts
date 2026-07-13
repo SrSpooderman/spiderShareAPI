@@ -1,6 +1,7 @@
 export type ProcessingStatus = "pending" | "processing" | "ready" | "failed";
 export type HealthStatus = "ok" | "warning" | "down";
 export type UserRole = "user" | "admin" | "super_admin";
+export type AuthProvider = "local" | "oidc";
 
 export type DashboardSummary = {
   totals: {
@@ -92,6 +93,9 @@ export type BackofficeUser = {
   id: string;
   username: string;
   displayName: string | null;
+  authProvider: AuthProvider;
+  oidcEmail: string | null;
+  oidcName: string | null;
   role: UserRole;
   isActive: boolean;
   videoCount: number;
@@ -104,6 +108,8 @@ export type UserListFilters = {
 };
 
 export type BackofficeUserDetail = BackofficeUser & {
+  oidcSubject: string | null;
+  oidcGroups: string[];
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;

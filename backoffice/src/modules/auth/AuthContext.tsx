@@ -23,12 +23,19 @@ type LoginResponse = {
   user: AuthUser;
 };
 
+type OidcAuthorizeResponse = {
+  authorization_url: string;
+  state: string;
+};
+
 type AuthContextValue = {
   token: string | null;
   user: AuthUser | null;
   isAuthenticated: boolean;
   isSuperAdmin: boolean;
   login: (username: string, password: string) => Promise<void>;
+  startOidcLogin: (redirectUri: string) => Promise<void>;
+  completeOidcLogin: (code: string, state: string, redirectUri: string) => Promise<void>;
   logout: () => void;
 };
 
@@ -67,6 +74,24 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const response = await apiRequest<LoginResponse>("/auth/login", {
           method: "POST",
           body: JSON.stringify({ username, password }),
+          skipAuth: true
+        });
+        storeToken(response.access_token);
+        storeUser(response.user);
+        setToken(response.access_token);
+        setUser(response.user);
+      },
+      async startOidcLogin(redirectUri) {
+        const response = await apiRequest<OidcAuthorizeResponse>(
+          `/auth/oidc/authorize?redirect_uri=${encodeURIComponent(redirectUri)}`,
+          { skipAuth: true }
+        );
+        window.location.assign(response.authorization_url);
+      },
+      async completeOidcLogin(code, state, redirectUri) {
+        const response = await apiRequest<LoginResponse>("/auth/oidc/callback", {
+          method: "POST",
+          body: JSON.stringify({ code, state, redirect_uri: redirectUri }),
           skipAuth: true
         });
         storeToken(response.access_token);

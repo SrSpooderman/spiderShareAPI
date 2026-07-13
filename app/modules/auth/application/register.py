@@ -4,7 +4,7 @@ from uuid import UUID
 
 from app.modules.auth.application.password_hasher import PasswordHasher
 from app.modules.users.domain.ports import UserPersistenceConflictError, UserRepository
-from app.modules.users.domain.user import User, UserCreate, UserRole
+from app.modules.users.domain.user import AuthProvider, User, UserCreate, UserRole
 
 
 class UsernameAlreadyExistsError(Exception):
@@ -31,6 +31,11 @@ class PublicUser:
     last_login_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    auth_provider: AuthProvider = AuthProvider.LOCAL
+    oidc_subject: str | None = None
+    oidc_email: str | None = None
+    oidc_name: str | None = None
+    oidc_groups: list[str] | None = None
 
 
 class RegisterUser:
@@ -73,6 +78,11 @@ def user_to_public(user: User) -> PublicUser:
         display_name=user.display_name,
         bio=user.bio,
         ldap=user.ldap,
+        auth_provider=user.auth_provider,
+        oidc_subject=user.oidc_subject,
+        oidc_email=user.oidc_email,
+        oidc_name=user.oidc_name,
+        oidc_groups=user.oidc_groups,
         role=user.role,
         is_active=user.is_active,
         last_seen_version=user.last_seen_version,

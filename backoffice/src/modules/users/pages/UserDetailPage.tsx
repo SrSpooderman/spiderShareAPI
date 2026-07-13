@@ -62,6 +62,15 @@ export function UserDetailPage() {
           </div>
           <dl className="description-list">
             <div><dt>Rol</dt><dd><Badge tone={user.role === "super_admin" ? "blue" : "neutral"}>{user.role}</Badge></dd></div>
+            <div><dt>Origen</dt><dd><Badge tone={user.authProvider === "oidc" ? "blue" : "neutral"}>{user.authProvider}</Badge></dd></div>
+            {user.authProvider === "oidc" ? (
+              <>
+                <div><dt>Email OIDC</dt><dd>{user.oidcEmail ?? "-"}</dd></div>
+                <div><dt>Nombre OIDC</dt><dd>{user.oidcName ?? "-"}</dd></div>
+                <div><dt>Sub OIDC</dt><dd>{user.oidcSubject ?? "-"}</dd></div>
+                <div><dt>Grupos OIDC</dt><dd>{user.oidcGroups.length ? user.oidcGroups.join(", ") : "-"}</dd></div>
+              </>
+            ) : null}
             <div><dt>Videos</dt><dd>{user.videoCount}</dd></div>
             <div><dt>Ultimo login</dt><dd>{user.lastLoginAt ?? "-"}</dd></div>
             <div><dt>Creado</dt><dd>{user.createdAt}</dd></div>

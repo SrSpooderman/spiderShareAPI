@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from app.modules.steam.domain.steam_game import SteamGame
-from app.modules.users.domain.user import User, UserRole
+from app.modules.users.domain.user import AuthProvider, User, UserRole
 from app.modules.videos.domain.video import (
     Video,
     VideoCategory,
@@ -29,6 +29,11 @@ def make_user(
     avatar_image: bytes | None = None,
     password_hash: str = "hashed:password",
     ldap: bool = False,
+    auth_provider: AuthProvider = AuthProvider.LOCAL,
+    oidc_subject: str | None = None,
+    oidc_email: str | None = None,
+    oidc_name: str | None = None,
+    oidc_groups: list[str] | None = None,
     role: UserRole = UserRole.USER,
     is_active: bool = True,
     last_seen_version: str | None = None,
@@ -45,6 +50,11 @@ def make_user(
         avatar_image=avatar_image,
         password_hash=password_hash,
         ldap=ldap,
+        auth_provider=auth_provider,
+        oidc_subject=oidc_subject,
+        oidc_email=oidc_email,
+        oidc_name=oidc_name,
+        oidc_groups=oidc_groups or [],
         role=role,
         is_active=is_active,
         last_seen_version=last_seen_version,

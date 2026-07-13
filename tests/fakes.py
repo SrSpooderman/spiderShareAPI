@@ -52,6 +52,12 @@ class FakeUserRepository:
             None,
         )
 
+    def get_by_oidc_subject(self, subject: str) -> User | None:
+        return next(
+            (user for user in self.users.values() if user.oidc_subject == subject),
+            None,
+        )
+
     def list(self) -> list[User]:
         return list(self.users.values())
 
@@ -64,6 +70,11 @@ class FakeUserRepository:
             avatar_image=user.avatar_image,
             password_hash=user.password_hash,
             ldap=user.ldap,
+            auth_provider=user.auth_provider,
+            oidc_subject=user.oidc_subject,
+            oidc_email=user.oidc_email,
+            oidc_name=user.oidc_name,
+            oidc_groups=user.oidc_groups or [],
             role=user.role,
         )
         return self.add(created_user)
@@ -77,6 +88,9 @@ class FakeUserRepository:
         bio: str | None = None,
         avatar_image: bytes | None = None,
         password_hash: str | None = None,
+        oidc_email: str | None = None,
+        oidc_name: str | None = None,
+        oidc_groups: list[str] | None = None,
         role: str | None = None,
         is_active: bool | None = None,
         last_login_at: datetime | None = None,
@@ -94,6 +108,9 @@ class FakeUserRepository:
             "bio": bio,
             "avatar_image": avatar_image,
             "password_hash": password_hash,
+            "oidc_email": oidc_email,
+            "oidc_name": oidc_name,
+            "oidc_groups": oidc_groups,
             "role": role,
             "is_active": is_active,
             "last_login_at": last_login_at,
@@ -113,6 +130,12 @@ class FakeUserRepository:
             user.avatar_image = avatar_image
         if password_hash is not None:
             user.password_hash = password_hash
+        if oidc_email is not None:
+            user.oidc_email = oidc_email
+        if oidc_name is not None:
+            user.oidc_name = oidc_name
+        if oidc_groups is not None:
+            user.oidc_groups = oidc_groups
         if role is not None:
             user.role = UserRole(role)
         if is_active is not None:

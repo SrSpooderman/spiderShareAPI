@@ -4,6 +4,7 @@ import { AppShell } from "@/layouts/AppShell";
 import { AuditPage } from "@/modules/audit/pages/AuditPage";
 import { DashboardPage } from "@/modules/dashboard/pages/DashboardPage";
 import { LoginPage } from "@/modules/auth/pages/LoginPage";
+import { OidcCallbackPage } from "@/modules/auth/pages/OidcCallbackPage";
 import { RequireAuth } from "@/modules/auth/RequireAuth";
 import { UserDetailPage } from "@/modules/users/pages/UserDetailPage";
 import { UserListPage } from "@/modules/users/pages/UserListPage";
@@ -17,6 +18,10 @@ export const router = createBrowserRouter([
   {
     path: "/login",
     element: <LoginPage />
+  },
+  {
+    path: "/login/oidc/callback",
+    element: <OidcCallbackPage />
   },
   {
     path: "/",

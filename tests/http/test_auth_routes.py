@@ -7,13 +7,16 @@ from app.modules.auth.application.login import (
     InvalidCredentialsError,
     LoginResult,
 )
+from app.modules.auth.application.oidc_login import OidcLoginCommand
 from app.modules.auth.application.register import (
     PublicUser,
     UsernameAlreadyExistsError,
 )
 from app.modules.auth.entrypoints.routes import get_current_user, get_login_user
 from app.modules.auth.entrypoints.routes import get_register_user, require_admin
+from app.modules.auth.wiring import get_oidc_login
 from app.modules.users.domain.user import UserRole
+from config.settings import settings
 
 
 @dataclass
@@ -39,6 +42,20 @@ class StubRegisterUser:
         if self.error is not None:
             raise self.error
 
+        return self.result
+
+
+@dataclass
+class StubOidcLogin:
+    result: LoginResult
+
+    def authorization_url(self, *, state: str, redirect_uri: str) -> str:
+        self.state = state
+        self.redirect_uri = redirect_uri
+        return f"https://keycloak.example/auth?state={state}"
+
+    def execute(self, command: OidcLoginCommand) -> LoginResult:
+        self.command = command
         return self.result
 
 
@@ -77,6 +94,59 @@ def test_login_returns_token_for_valid_credentials(app, client, user_factory) ->
     assert response.json()["user"]["username"] == "alice"
     assert login_user.command.username == "alice"
     assert login_user.command.password == "supersecret"
+
+
+@pytest.mark.http
+def test_oidc_authorize_and_callback_return_internal_token(
+    app,
+    client,
+    monkeypatch,
+    user_factory,
+) -> None:
+    monkeypatch.setattr(settings, "oidc_enabled", True)
+    user = user_factory(username="alice")
+    oidc_login = StubOidcLogin(
+        result=LoginResult(
+            access_token="oidc-token",
+            token_type="bearer",
+            user=PublicUser(
+                id=user.id,
+                username=user.username,
+                display_name=user.display_name,
+                bio=user.bio,
+                ldap=True,
+                role=user.role,
+                is_active=user.is_active,
+                last_seen_version=user.last_seen_version,
+                last_login_at=user.last_login_at,
+                created_at=user.created_at,
+                updated_at=user.updated_at,
+            ),
+        )
+    )
+    app.dependency_overrides[get_oidc_login] = lambda: oidc_login
+
+    authorize_response = client.get(
+        "/auth/oidc/authorize",
+        params={"redirect_uri": "http://localhost:5173/login/oidc/callback"},
+    )
+
+    assert authorize_response.status_code == 200
+    state = authorize_response.json()["state"]
+    assert authorize_response.json()["authorization_url"].startswith("https://keycloak.example/auth")
+
+    callback_response = client.post(
+        "/auth/oidc/callback",
+        json={
+            "code": "code-123",
+            "state": state,
+            "redirect_uri": "http://localhost:5173/login/oidc/callback",
+        },
+    )
+
+    assert callback_response.status_code == 200
+    assert callback_response.json()["access_token"] == "oidc-token"
+    assert oidc_login.command.code == "code-123"
 
 
 @pytest.mark.http

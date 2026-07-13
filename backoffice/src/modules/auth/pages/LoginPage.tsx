@@ -1,17 +1,20 @@
-import { ShieldCheck } from "lucide-react";
+import { KeyRound, ShieldCheck } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "@/modules/auth/AuthContext";
+import { rememberOidcReturnTo } from "@/modules/auth/pages/OidcCallbackPage";
 
 export function LoginPage() {
-  const { isAuthenticated, login } = useAuth();
+  const { isAuthenticated, login, startOidcLogin } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [ssoError, setSsoError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isStartingSso, setIsStartingSso] = useState(false);
 
   const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname ?? "/dashboard";
 
@@ -31,6 +34,19 @@ export function LoginPage() {
       setError("No se pudo iniciar sesion con esas credenciales.");
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleSsoLogin() {
+    setSsoError(null);
+    setIsStartingSso(true);
+    rememberOidcReturnTo(from);
+
+    try {
+      await startOidcLogin(`${window.location.origin}/login/oidc/callback`);
+    } catch {
+      setSsoError("No se pudo iniciar el login con SSO.");
+      setIsStartingSso(false);
     }
   }
 
@@ -69,6 +85,12 @@ export function LoginPage() {
         <button className="button primary" disabled={isSubmitting} type="submit">
           {isSubmitting ? "Entrando..." : "Entrar al panel"}
         </button>
+
+        <button className="button ghost" disabled={isStartingSso} onClick={handleSsoLogin} type="button">
+          <KeyRound size={16} />
+          {isStartingSso ? "Redirigiendo..." : "Entrar con SSO"}
+        </button>
+        {ssoError ? <p className="form-error">{ssoError}</p> : null}
       </form>
     </main>
   );

@@ -129,6 +129,7 @@ export function UserListPage() {
               <tr>
                 <th>Username</th>
                 <th>Nombre</th>
+                <th>Origen</th>
                 <th>Rol</th>
                 <th>Estado</th>
                 <th>Videos</th>
@@ -140,6 +141,7 @@ export function UserListPage() {
                 <tr key={user.id}>
                   <td>{user.username}</td>
                   <td>{user.displayName ?? "-"}</td>
+                  <td><Badge tone={user.authProvider === "oidc" ? "blue" : "neutral"}>{user.authProvider}</Badge></td>
                   <td><Badge tone={user.role === "super_admin" ? "blue" : "neutral"}>{user.role}</Badge></td>
                   <td><Badge tone={user.isActive ? "green" : "red"}>{user.isActive ? "active" : "inactive"}</Badge></td>
                   <td>{user.videoCount}</td>

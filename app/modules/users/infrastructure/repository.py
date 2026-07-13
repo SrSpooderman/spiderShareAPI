@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from uuid import UUID
 
@@ -36,6 +37,15 @@ class SqlAlchemyUserRepository(UserRepository):
 
         return user_model_to_domain(model)
 
+    def get_by_oidc_subject(self, subject: str) -> User | None:
+        statement = select(UserModel).where(UserModel.oidc_subject == subject)
+        model = self.session.scalar(statement)
+
+        if model is None:
+            return None
+
+        return user_model_to_domain(model)
+
     def list(self) -> list[User]:
         statement = select(UserModel).order_by(UserModel.created_at.desc())
         models = self.session.scalars(statement).all()
@@ -64,6 +74,9 @@ class SqlAlchemyUserRepository(UserRepository):
         bio: str | None = None,
         avatar_image: bytes | None = None,
         password_hash: str | None = None,
+        oidc_email: str | None = None,
+        oidc_name: str | None = None,
+        oidc_groups: list[str] | None = None,
         role: str | None = None,
         is_active: bool | None = None,
         last_login_at: datetime | None = None,
@@ -87,6 +100,12 @@ class SqlAlchemyUserRepository(UserRepository):
             model.avatar_image = avatar_image
         if password_hash is not None:
             model.password_hash = password_hash
+        if oidc_email is not None:
+            model.oidc_email = oidc_email
+        if oidc_name is not None:
+            model.oidc_name = oidc_name
+        if oidc_groups is not None:
+            model.oidc_groups = json.dumps(oidc_groups)
         if role is not None:
             model.role = role
         if is_active is not None:

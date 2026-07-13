@@ -18,6 +18,10 @@ class UserRepository(ABC):
         pass
 
     @abstractmethod
+    def get_by_oidc_subject(self, subject: str) -> User | None:
+        pass
+
+    @abstractmethod
     def list(self) -> list[User]:
         pass
 
@@ -35,6 +39,9 @@ class UserRepository(ABC):
         bio: str | None = None,
         avatar_image: bytes | None = None,
         password_hash: str | None = None,
+        oidc_email: str | None = None,
+        oidc_name: str | None = None,
+        oidc_groups: list[str] | None = None,
         role: str | None = None,
         is_active: bool | None = None,
         last_login_at: datetime | None = None,

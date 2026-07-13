@@ -1,5 +1,9 @@
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from datetime import datetime, timedelta, timezone
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from jose import JWTError, jwt
 from pydantic import ValidationError
 
 from app.modules.auth.application.login import (
@@ -7,6 +11,11 @@ from app.modules.auth.application.login import (
     InvalidCredentialsError,
     LoginUser,
     LoginUserCommand,
+)
+from app.modules.auth.application.oidc_login import (
+    OidcAuthenticationError,
+    OidcLogin,
+    OidcLoginCommand,
 )
 from app.modules.auth.application.register import (
     RegisterUser,
@@ -16,21 +25,26 @@ from app.modules.auth.application.register import (
 from app.modules.auth.entrypoints.schemas import (
     LoginRequest,
     LoginResponse,
+    OidcAuthorizeResponse,
+    OidcCallbackRequest,
     RegisterRequest,
     UserResponse,
 )
 from app.modules.auth.wiring import (
     get_current_user,
     get_login_user,
+    get_oidc_login,
     get_register_user,
     require_admin,
 )
 from app.modules.users.domain.user import User, can_create_user_with_role
 from app.shared.infrastructure.logging import get_logger
+from config.settings import settings
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 logger = get_logger(__name__)
+OIDC_STATE_AUDIENCE = "oidc-login"
 
 
 async def _login_request_from_http_request(request: Request) -> LoginRequest:
@@ -51,6 +65,42 @@ async def _login_request_from_http_request(request: Request) -> LoginRequest:
             for item in error.errors()
         ]
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail)
+
+
+def _ensure_oidc_enabled() -> None:
+    if not settings.oidc_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OIDC login is not enabled",
+        )
+
+
+def _create_oidc_state() -> str:
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+    return jwt.encode(
+        {
+            "aud": OIDC_STATE_AUDIENCE,
+            "nonce": str(uuid4()),
+            "exp": expires_at,
+        },
+        settings.secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+
+def _validate_oidc_state(state: str) -> None:
+    try:
+        jwt.decode(
+            state,
+            settings.secret_key,
+            algorithms=[settings.jwt_algorithm],
+            audience=OIDC_STATE_AUDIENCE,
+        )
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid OIDC state",
+        )
 
 
 @router.post(
@@ -134,6 +184,66 @@ async def login(
 
     logger.info(
         "Login succeeded user_id=%s username=%s role=%s",
+        result.user.id,
+        result.user.username,
+        result.user.role.value,
+    )
+    return LoginResponse.from_result(result)
+
+
+@router.get("/oidc/authorize", response_model=OidcAuthorizeResponse)
+def oidc_authorize(
+    redirect_uri: str = Query(..., min_length=1, max_length=2048),
+    oidc_login: OidcLogin = Depends(get_oidc_login),
+) -> OidcAuthorizeResponse:
+    _ensure_oidc_enabled()
+    state = _create_oidc_state()
+
+    try:
+        authorization_url = oidc_login.authorization_url(
+            state=state,
+            redirect_uri=redirect_uri,
+        )
+    except OidcAuthenticationError as error:
+        logger.warning("OIDC authorize failed reason=%s", str(error))
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OIDC login is not available",
+        )
+
+    return OidcAuthorizeResponse(authorization_url=authorization_url, state=state)
+
+
+@router.post("/oidc/callback", response_model=LoginResponse)
+def oidc_callback(
+    request: OidcCallbackRequest,
+    oidc_login: OidcLogin = Depends(get_oidc_login),
+) -> LoginResponse:
+    _ensure_oidc_enabled()
+    _validate_oidc_state(request.state)
+
+    try:
+        result = oidc_login.execute(
+            OidcLoginCommand(
+                code=request.code,
+                redirect_uri=request.redirect_uri,
+            )
+        )
+    except InactiveUserError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Inactive user",
+        )
+    except OidcAuthenticationError as error:
+        logger.warning("OIDC login failed reason=%s", str(error))
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="OIDC login failed",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    logger.info(
+        "OIDC login succeeded user_id=%s username=%s role=%s",
         result.user.id,
         result.user.username,
         result.user.role.value,

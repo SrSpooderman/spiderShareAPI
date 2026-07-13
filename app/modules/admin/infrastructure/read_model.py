@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from uuid import UUID
 
@@ -318,6 +319,8 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
         summary = self._user_summary(model, int(video_count or 0))
         return AdminUserDetailResponse(
             **summary.model_dump(),
+            oidc_subject=model.oidc_subject,
+            oidc_groups=self._oidc_groups(model),
             last_login_at=model.last_login_at,
             created_at=model.created_at,
             updated_at=model.updated_at,
@@ -378,10 +381,24 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
             id=UUID(model.id),
             username=model.username,
             display_name=model.display_name,
+            auth_provider=model.auth_provider,
+            oidc_email=model.oidc_email,
+            oidc_name=model.oidc_name,
             role=model.role,
             is_active=model.is_active,
             video_count=video_count,
         )
+
+    def _oidc_groups(self, model: UserModel) -> list[str]:
+        if not model.oidc_groups:
+            return []
+        try:
+            decoded = json.loads(model.oidc_groups)
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(decoded, list):
+            return []
+        return [str(group) for group in decoded if str(group).strip()]
 
     def _video_status_counts(self) -> dict[str, int]:
         counts = {

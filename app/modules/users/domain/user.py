@@ -4,6 +4,11 @@ from enum import Enum
 from uuid import UUID
 
 
+class AuthProvider(str, Enum):
+    LOCAL = "local"
+    OIDC = "oidc"
+
+
 class UserRole(str, Enum):
     USER = "user"
     ADMIN = "admin"
@@ -47,6 +52,11 @@ class User:
     avatar_image: bytes | None
     password_hash: str
     ldap: bool
+    auth_provider: AuthProvider
+    oidc_subject: str | None
+    oidc_email: str | None
+    oidc_name: str | None
+    oidc_groups: list[str]
     role: UserRole
     is_active: bool
     last_seen_version: str | None
@@ -62,4 +72,9 @@ class UserCreate:
     avatar_image: bytes | None
     password_hash: str
     ldap: bool
+    auth_provider: AuthProvider = AuthProvider.LOCAL
+    oidc_subject: str | None = None
+    oidc_email: str | None = None
+    oidc_name: str | None = None
+    oidc_groups: list[str] | None = None
     role: UserRole = UserRole.USER

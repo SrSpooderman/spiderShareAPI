@@ -5,9 +5,11 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
 
 from app.modules.auth.application.login import LoginUser
+from app.modules.auth.application.oidc_login import OidcLogin, OidcProvider
 from app.modules.auth.application.password_hasher import PasswordHasher
 from app.modules.auth.application.register import RegisterUser
 from app.modules.auth.infrastructure.jwt_service import JwtService
+from app.modules.auth.infrastructure.oidc_provider import KeycloakOidcProvider
 from app.modules.users.domain.ports import UserRepository
 from app.modules.users.domain.user import User, UserRole, has_role_at_least
 from app.modules.users.wiring import get_user_repository
@@ -17,6 +19,7 @@ from app.shared.infrastructure.logging import (
     set_user_role,
     set_username,
 )
+from config.settings import settings
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -55,6 +58,23 @@ def get_login_user(
     jwt_service: JwtService = Depends(get_jwt_service),
 ) -> LoginUser:
     return LoginUser(user_repository, password_hasher, jwt_service)
+
+
+def get_oidc_provider() -> OidcProvider:
+    return KeycloakOidcProvider()
+
+
+def get_oidc_login(
+    user_repository: UserRepository = Depends(get_user_repository),
+    jwt_service: JwtService = Depends(get_jwt_service),
+    oidc_provider: OidcProvider = Depends(get_oidc_provider),
+) -> OidcLogin:
+    return OidcLogin(
+        user_repository,
+        jwt_service,
+        oidc_provider,
+        default_role=UserRole(settings.oidc_default_role),
+    )
 
 
 def get_current_user(

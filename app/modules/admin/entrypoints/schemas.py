@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.modules.users.domain.user import UserRole
+from app.modules.users.domain.user import AuthProvider, UserRole
 from app.modules.videos.domain.video import VideoProcessingStatus
 
 
@@ -101,12 +101,17 @@ class AdminUserResponse(CamelModel):
     id: UUID
     username: str
     display_name: str | None = Field(alias="displayName")
+    auth_provider: AuthProvider = Field(default=AuthProvider.LOCAL, alias="authProvider")
+    oidc_email: str | None = Field(default=None, alias="oidcEmail")
+    oidc_name: str | None = Field(default=None, alias="oidcName")
     role: UserRole
     is_active: bool = Field(alias="isActive")
     video_count: int = Field(alias="videoCount")
 
 
 class AdminUserDetailResponse(AdminUserResponse):
+    oidc_subject: str | None = Field(default=None, alias="oidcSubject")
+    oidc_groups: list[str] = Field(default_factory=list, alias="oidcGroups")
     last_login_at: datetime | None = Field(alias="lastLoginAt")
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")

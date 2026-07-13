@@ -17,6 +17,15 @@ class Settings(BaseSettings):
     secret_key: str
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 15
+    oidc_enabled: bool = False
+    oidc_issuer_url: str | None = None
+    oidc_authorization_endpoint: str | None = None
+    oidc_token_endpoint: str | None = None
+    oidc_jwks_uri: str | None = None
+    oidc_client_id: str | None = None
+    oidc_client_secret: str | None = None
+    oidc_scope: str = "openid profile email"
+    oidc_default_role: str = "user"
     super_admin_username: str | None = None
     super_admin_password: str | None = None
     steam_web_api_key: str | None = None
