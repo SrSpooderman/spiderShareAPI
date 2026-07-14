@@ -22,7 +22,7 @@ class UserRepository(ABC):
         pass
 
     @abstractmethod
-    def list(self) -> list[User]:
+    def list_users(self) -> list[User]:
         pass
 
     @abstractmethod

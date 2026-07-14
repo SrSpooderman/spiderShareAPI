@@ -98,7 +98,7 @@ def list_users(
     current_user: User = Depends(require_admin),
     user_repository: UserRepository = Depends(get_user_repository),
 ) -> list[UserResponse]:
-    users = user_repository.list()
+    users = user_repository.list_users()
     visible_users = [
         user
         for user in users

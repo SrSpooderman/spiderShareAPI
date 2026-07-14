@@ -58,7 +58,7 @@ class FakeUserRepository:
             None,
         )
 
-    def list(self) -> list[User]:
+    def list_users(self) -> list[User]:
         return list(self.users.values())
 
     def create(self, user: UserCreate) -> User:

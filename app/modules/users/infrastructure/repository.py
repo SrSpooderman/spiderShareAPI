@@ -46,7 +46,7 @@ class SqlAlchemyUserRepository(UserRepository):
 
         return user_model_to_domain(model)
 
-    def list(self) -> list[User]:
+    def list_users(self) -> list[User]:
         statement = select(UserModel).order_by(UserModel.created_at.desc())
         models = self.session.scalars(statement).all()
 
