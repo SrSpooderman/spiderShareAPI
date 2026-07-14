@@ -40,7 +40,6 @@
 ## Prioridad baja
 
 - [API] "popularidad": "mejorar formula usando favoritos, reacciones, reproducciones, descargas y antiguedad"
-- [API] "notificaciones Discord": "definir variables `DISCORD_WEBHOOK_URL`, `DISCORD_NOTIFICATIONS_ENABLED` y URL publica/base de API"
 - [API] "notificaciones Discord": "crear puerto/servicio de dominio para notificaciones externas de videos"
 - [API] "notificaciones Discord": "implementar proveedor HTTP para Discord Webhooks con timeout, logs y errores no bloqueantes"
 - [WORKER] "notificaciones Discord": "disparar aviso cuando un video queda `ready`, nunca al subirlo en `pending`"

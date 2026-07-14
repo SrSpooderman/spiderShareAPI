@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     video_processing_queue_name: str = "video-processing"
     video_processing_max_attempts: int = 3
     video_processing_job_timeout_seconds: int = 900
+    backoffice_api_base_url: str | None = None
+    public_clip_base_url: str | None = None
+    discord_webhook_enabled: bool = False
+    discord_webhook_url: str | None = None
 
     @field_validator("cors_allowed_origins", mode="before")
     @classmethod

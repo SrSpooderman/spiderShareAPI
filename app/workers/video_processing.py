@@ -20,11 +20,51 @@ from app.shared.infrastructure.logging import (
     set_video_id,
     set_worker_name,
 )
+from app.shared.infrastructure.providers.discord_webhook import (
+    DiscordWebhookError,
+    DiscordWebhookNotifier,
+)
 from app.shared.infrastructure.providers.storage.video_transcoder import FfmpegVideoTranscoder
 from config.settings import settings
 
 logger = get_logger(__name__)
 jaimito_logger = JaimitoWorkerLogger(logger)
+
+
+def _notify_discord_video_ready(video, *, job_id: str) -> None:
+    try:
+        result = DiscordWebhookNotifier().notify_video_ready(video)
+    except DiscordWebhookError as error:
+        logger.warning(
+            "Discord webhook failed video_id=%s reason=%s",
+            video.id,
+            str(error),
+        )
+        _record_worker_event(
+            event_type="discord.webhook.failed",
+            level="warning",
+            message="Discord webhook failed",
+            video_id=str(video.id),
+            job_id=job_id,
+            metadata={"reason": str(error)},
+        )
+        return
+
+    if not result.sent:
+        logger.info(
+            "Discord webhook skipped video_id=%s reason=%s",
+            video.id,
+            result.reason,
+        )
+        return
+
+    logger.info("Discord webhook sent video_id=%s", video.id)
+    _record_worker_event(
+        event_type="discord.webhook.sent",
+        message="Discord webhook sent",
+        video_id=str(video.id),
+        job_id=job_id,
+    )
 
 
 def _safe_url(url: str) -> str:
@@ -82,11 +122,13 @@ def process_video_job(video_id: str) -> None:
         with SessionLocal() as db:
             video_repository = SqlAlchemyVideoRepository(db)
             video_transcoder = FfmpegVideoTranscoder()
-            ProcessVideo(video_repository, video_transcoder).execute(
+            processed_video = ProcessVideo(video_repository, video_transcoder).execute(
                 parsed_video_id,
                 raise_on_error=True,
                 job_id=current_job_id,
             )
+            if processed_video is not None:
+                _notify_discord_video_ready(processed_video, job_id=current_job_id)
     except Exception as error:
         jaimito_logger.job_failed(
             video_id=video_id,
