@@ -20,6 +20,7 @@
 
 - [API] "audit trail": "registrar acciones sensibles fuera de admin routes: crear categoria, importar categoria Steam, editar video, borrar video, retry, requeue, delete queue job"
 - [API] "errores HTTP": "unificar payload de errores con `code`, `detail`, `request_id` y `metadata` para facilitar soporte desde backoffice"
+- [AUTH] "fase 2 local/OIDC": "disenar linking explicito entre cuenta local y cuenta OIDC desde backoffice, con confirmacion de super_admin, auditoria, validacion de email verificado y sin enlace automatico por email"
 - [API] "SteamGridDB": "guardar `steamgriddb_asset_id`, score y author de los grids elegidos para trazabilidad de thumbnails"
 - [API] "SteamGridDB": "permitir refrescar thumbnails de una categoria Steam sin recrearla"
 - [API] "SteamGridDB": "permitir elegir manualmente entre varios grids verticales/horizontales antes de importar"

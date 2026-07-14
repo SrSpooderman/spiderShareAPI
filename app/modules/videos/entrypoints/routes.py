@@ -579,6 +579,31 @@ def stream_video(
     )
 
 
+@router.get("/clip/{video_id}")
+def clip_video(
+    video_id: UUID,
+    current_user: User | None = Depends(get_optional_current_user),
+    get_video_use_case: GetVideo = Depends(get_get_video),
+    video_storage: VideoStorage = Depends(get_video_storage),
+) -> FileResponse:
+    video = _get_accessible_video(video_id, current_user, get_video_use_case)
+    if video.processing_status != VideoProcessingStatus.READY:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Video is not ready",
+        )
+
+    variant_path = video_storage.get_variant_path(video_id, VideoVariantType.LOW_H264)
+    _ensure_file_exists(variant_path)
+
+    return FileResponse(
+        variant_path,
+        media_type="video/mp4",
+        filename=f"{video_id}.mp4",
+        content_disposition_type="inline",
+    )
+
+
 @router.get("/videos/{video_id}/thumbnail")
 def get_video_thumbnail(
     video_id: UUID,

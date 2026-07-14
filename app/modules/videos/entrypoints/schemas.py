@@ -198,6 +198,7 @@ class VideoSummaryResponse(BaseModel):
 class VideoDetailResponse(VideoSummaryResponse):
     original_filename: str
     playback_url: str | None
+    clip_url: str
     download_url: str
     thumbnail_url: str | None
     aspect_ratio: VideoAspectRatio | None
@@ -231,6 +232,7 @@ class VideoDetailResponse(VideoSummaryResponse):
                 and video.variants
                 else None
             ),
+            clip_url=f"/clip/{video.id}",
             download_url=f"/videos/{video.id}/download",
             thumbnail_url=(
                 f"/videos/{video.id}/thumbnail"

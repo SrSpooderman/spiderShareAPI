@@ -76,6 +76,7 @@ def test_list_videos_supports_pagination_filters_and_popularity_order(
         "display_name": "Owner",
     }
     assert body["items"][0]["original_filename"] == matching_high.original_filename
+    assert body["items"][0]["clip_url"] == f"/clip/{matching_high.id}"
     assert body["items"][0]["download_url"] == f"/videos/{matching_high.id}/download"
     assert body["items"][0]["is_owner"] is False
     assert body["items"][0]["can_edit"] is False
@@ -144,6 +145,7 @@ def test_upload_video_creates_video_and_stores_original(
     assert body["duration_seconds"] is None
     assert body["thumbnail_path"] is None
     assert body["playback_url"] is None
+    assert body["clip_url"] == f"/clip/{body['id']}"
     assert body["download_url"] == f"/videos/{body['id']}/download"
     assert body["thumbnail_url"] is None
     assert body["variants"] == []
@@ -670,6 +672,13 @@ def test_video_download_stream_and_thumbnail_respect_visibility(
     assert response.content == b"stream-video"
     assert response.headers["content-type"].startswith("video/mp4")
 
+    response = client.get(f"/clip/{video.id}")
+
+    assert response.status_code == 200
+    assert response.content == b"stream-video"
+    assert response.headers["content-type"].startswith("video/mp4")
+    assert response.headers["content-disposition"].startswith("inline;")
+
     response = client.get(f"/videos/{video.id}/stream?variant_type=original")
 
     assert response.status_code == 200
@@ -739,10 +748,39 @@ def test_registered_only_video_files_require_login(
 
     assert response.status_code == 403
 
+    response = client.get(f"/clip/{video.id}")
+
+    assert response.status_code == 403
+
     app.dependency_overrides[get_optional_current_user] = lambda: user
     response = client.get(f"/videos/{video.id}/download")
 
     assert response.status_code == 200
+
+
+@pytest.mark.http
+def test_clip_link_requires_ready_video(
+    app,
+    client,
+    tmp_path,
+    video_factory,
+    video_repository,
+    video_storage,
+) -> None:
+    video = video_repository.add(
+        video_factory(processing_status=VideoProcessingStatus.PENDING)
+    )
+    original_path = tmp_path / "original.mp4"
+    original_path.write_bytes(b"original-video")
+    video_storage.original_paths[video.id] = original_path
+    app.dependency_overrides[get_video_repository] = lambda: video_repository
+    app.dependency_overrides[get_video_storage] = lambda: video_storage
+    app.dependency_overrides[get_optional_current_user] = lambda: None
+
+    response = client.get(f"/clip/{video.id}")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Video is not ready"
 
 
 @pytest.mark.http
