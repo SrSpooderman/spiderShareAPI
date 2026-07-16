@@ -54,8 +54,6 @@ services:
     depends_on:
       api:
         condition: service_started
-        aliases:
-          - ${BACKOFFICE_NETWORK_ALIAS:-backoffice}
 
   redis:
     image: redis:7-alpine
