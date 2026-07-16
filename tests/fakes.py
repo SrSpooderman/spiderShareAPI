@@ -650,6 +650,18 @@ class FakeVideoTagRepository:
 
         return self.add(make_video_tag(name=tag.name))
 
+    def update(self, tag_id: UUID, tag: VideoTagCreate) -> VideoTag | None:
+        existing = self.tags.get(tag_id)
+        if existing is None:
+            return None
+
+        updated = make_video_tag(id=tag_id, name=tag.name)
+        self.tags[tag_id] = updated
+        return updated
+
+    def delete(self, tag_id: UUID) -> bool:
+        return self.tags.pop(tag_id, None) is not None
+
 
 class FakeVideoStorage:
     def __init__(

@@ -185,6 +185,14 @@ class VideoTagRepository(ABC):
     def create(self, tag: VideoTagCreate) -> VideoTag:
         pass
 
+    @abstractmethod
+    def update(self, tag_id: UUID, tag: VideoTagCreate) -> VideoTag | None:
+        pass
+
+    @abstractmethod
+    def delete(self, tag_id: UUID) -> bool:
+        pass
+
 
 class VideoStorage(ABC):
     @abstractmethod

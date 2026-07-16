@@ -160,6 +160,27 @@ class SqlAlchemyVideoTagRepository(VideoTagRepository):
 
         return video_tag_model_to_domain(model)
 
+    def update(self, tag_id: UUID, tag: VideoTagCreate) -> VideoTag | None:
+        model = self.session.get(VideoTagModel, str(tag_id))
+        if model is None:
+            return None
+
+        model.name = tag.name
+        self.session.commit()
+        self.session.refresh(model)
+
+        return video_tag_model_to_domain(model)
+
+    def delete(self, tag_id: UUID) -> bool:
+        model = self.session.get(VideoTagModel, str(tag_id))
+        if model is None:
+            return False
+
+        self.session.delete(model)
+        self.session.commit()
+
+        return True
+
 
 class SqlAlchemyVideoRepository(VideoRepository):
     def __init__(self, session: Session) -> None:

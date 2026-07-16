@@ -246,6 +246,61 @@ def test_list_and_create_video_tags(
 
 
 @pytest.mark.http
+def test_update_video_tag(
+    app,
+    client,
+    user_factory,
+    video_tag_repository,
+) -> None:
+    user = user_factory()
+    tag = video_tag_repository.add(make_video_tag(name="Old name"))
+    app.dependency_overrides[get_video_tag_repository] = lambda: video_tag_repository
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    response = client.patch(f"/tags/{tag.id}", json={"name": "New name"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == str(tag.id)
+    assert body["name"] == "New name"
+
+    response = client.patch(f"/tags/{uuid4()}", json={"name": "Missing"})
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Video tag not found"
+
+
+@pytest.mark.http
+def test_delete_video_tag_requires_admin(
+    app,
+    client,
+    user_factory,
+    video_tag_repository,
+) -> None:
+    user = user_factory()
+    admin = user_factory(role="admin")
+    tag = video_tag_repository.add(make_video_tag(name="To delete"))
+    app.dependency_overrides[get_video_tag_repository] = lambda: video_tag_repository
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    response = client.delete(f"/tags/{tag.id}")
+
+    assert response.status_code == 403
+    assert tag.id in video_tag_repository.tags
+
+    app.dependency_overrides[get_current_user] = lambda: admin
+    response = client.delete(f"/tags/{tag.id}")
+
+    assert response.status_code == 204
+    assert tag.id not in video_tag_repository.tags
+
+    response = client.delete(f"/tags/{tag.id}")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Video tag not found"
+
+
+@pytest.mark.http
 def test_update_video_category(
     app,
     client,
