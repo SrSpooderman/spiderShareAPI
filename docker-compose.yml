@@ -19,7 +19,6 @@ services:
         condition: service_healthy
     networks:
       spidershare_network:
-      proxy_network:
         aliases:
           - ${API_NETWORK_ALIAS:-spidershare-api}
     command: >
@@ -63,7 +62,6 @@ services:
         condition: service_started
     networks:
       spidershare_network:
-      proxy_network:
         aliases:
           - ${BACKOFFICE_NETWORK_ALIAS:-backoffice}
 
