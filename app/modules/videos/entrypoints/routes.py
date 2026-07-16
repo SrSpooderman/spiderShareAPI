@@ -135,15 +135,15 @@ def _map_video_upload_error(error: VideoUploadError) -> HTTPException:
     )
 
 
-def _normalize_tags(tags: list[str]) -> list[str]:
-    normalized_tags = [tag.strip() for tag in tags if tag.strip()]
-    if len(normalized_tags) > settings.max_video_tags:
+def _normalize_tag_ids(tag_ids: list[UUID]) -> list[UUID]:
+    normalized_tag_ids = list(dict.fromkeys(tag_ids))
+    if len(normalized_tag_ids) > settings.max_video_tags:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Too many tags",
         )
 
-    return normalized_tags
+    return normalized_tag_ids
 
 
 def _normalize_required_text(value: str, field_name: str) -> str:
@@ -180,7 +180,7 @@ async def _video_upload_request_hash(
     is_registered_only: bool,
     edited: bool,
     category_ids: list[UUID],
-    tags: list[str],
+    tag_ids: list[UUID],
 ) -> str:
     digest = hashlib.sha256()
     metadata = {
@@ -189,7 +189,7 @@ async def _video_upload_request_hash(
         "is_registered_only": is_registered_only,
         "edited": edited,
         "category_ids": sorted(str(category_id) for category_id in category_ids),
-        "tags": sorted(tags),
+        "tag_ids": sorted(str(tag_id) for tag_id in tag_ids),
         "filename": file.filename or "video",
         "content_type": file.content_type,
     }
@@ -294,7 +294,7 @@ async def upload_video(
     is_registered_only: bool = Form(default=False),
     edited: bool = Form(default=False),
     category_ids: list[UUID] = Form(default=[]),
-    tags: list[str] = Form(default=[]),
+    tag_ids: list[UUID] = Form(default=[]),
     current_user: User = Depends(get_current_user),
     upload_video_use_case: UploadVideo = Depends(get_upload_video),
     video_processing_queue: VideoProcessingQueue = Depends(get_video_processing_queue),
@@ -307,7 +307,7 @@ async def upload_video(
     upload_size = getattr(file, "size", None)
     normalized_title = _normalize_required_text(title, "title")
     normalized_description = _normalize_optional_text(description)
-    normalized_tags = _normalize_tags(tags)
+    normalized_tag_ids = _normalize_tag_ids(tag_ids)
 
     request_hash = await _video_upload_request_hash(
         file=file,
@@ -316,7 +316,7 @@ async def upload_video(
         is_registered_only=is_registered_only,
         edited=edited,
         category_ids=category_ids,
-        tags=normalized_tags,
+        tag_ids=normalized_tag_ids,
     )
     idempotency_record_or_response = _get_or_start_idempotency_record(
         idempotency_key=idempotency_key,
@@ -342,7 +342,7 @@ async def upload_video(
                 is_registered_only=is_registered_only,
                 edited=edited,
                 category_ids=category_ids,
-                tags=normalized_tags,
+                tag_ids=normalized_tag_ids,
             )
         )
         video.owner = VideoOwner(
@@ -448,8 +448,8 @@ async def upload_video(
 @router.get("/videos", response_model=VideoListResponse)
 def list_videos(
     title: str | None = Query(default=None),
-    tags: list[str] | None = Query(default=None),
     category_ids: list[UUID] | None = Query(default=None),
+    tag_ids: list[UUID] | None = Query(default=None),
     owner_id: UUID | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -461,8 +461,8 @@ def list_videos(
     result = list_videos_use_case.execute(
         ListVideosQuery(
             title=title,
-            tags=tags,
             category_ids=category_ids,
+            tag_ids=tag_ids,
             owner_id=owner_id,
             limit=limit,
             offset=offset,
@@ -651,7 +651,7 @@ def update_video(
                 category_ids=(
                     request.category_ids if "category_ids" in fields_set else None
                 ),
-                tags=request.tags if "tags" in fields_set else None,
+                tag_ids=request.tag_ids if "tag_ids" in fields_set else None,
             ),
             current_user,
         )

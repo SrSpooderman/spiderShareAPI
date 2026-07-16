@@ -17,7 +17,7 @@ class UploadVideoCommand:
     is_registered_only: bool = False
     edited: bool = False
     category_ids: list[UUID] = field(default_factory=list)
-    tags: list[str] = field(default_factory=list)
+    tag_ids: list[UUID] = field(default_factory=list)
 
 
 class UploadVideo:
@@ -49,7 +49,7 @@ class UploadVideo:
                     is_registered_only=command.is_registered_only,
                     edited=command.edited,
                     category_ids=command.category_ids,
-                    tags=command.tags,
+                    tag_ids=command.tag_ids,
                 )
             )
         except Exception:

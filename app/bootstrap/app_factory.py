@@ -11,6 +11,7 @@ from app.modules.users.entrypoints.routes import router as users_router
 from app.modules.videos.entrypoints.catalog_routes import router as catalog_router
 from app.modules.videos.entrypoints.interactions_routes import router as interactions_router
 from app.modules.videos.entrypoints.routes import router as videos_router
+from app.modules.videos.entrypoints.tag_routes import router as tags_router
 from app.shared.infrastructure.logging import (
     configure_logging,
     get_logger,
@@ -175,6 +176,7 @@ def create_app() -> FastAPI:
     app.include_router(steam_router)
     app.include_router(videos_router)
     app.include_router(catalog_router)
+    app.include_router(tags_router)
     app.include_router(interactions_router)
 
     return app

@@ -7,6 +7,7 @@ from app.modules.videos.wiring import (
     get_video_processing_queue,
     get_video_repository,
     get_video_storage,
+    get_video_tag_repository,
 )
 from app.modules.steam.wiring import get_steamgriddb_client
 from app.modules.videos.domain.video import VideoProcessingStatus
@@ -55,7 +56,7 @@ def test_list_videos_supports_pagination_filters_and_popularity_order(
         "/videos",
         params=[
             ("title", "boss"),
-            ("tags", "boss"),
+            ("tag_ids", str(tag.id)),
             ("category_ids", str(category.id)),
             ("owner_id", str(owner.id)),
             ("limit", "1"),
@@ -88,7 +89,7 @@ def test_list_videos_supports_pagination_filters_and_popularity_order(
         "/videos",
         params=[
             ("title", "boss"),
-            ("tags", "boss"),
+            ("tag_ids", str(tag.id)),
             ("category_ids", str(category.id)),
             ("owner_id", str(owner.id)),
             ("limit", "1"),
@@ -122,7 +123,7 @@ def test_upload_video_creates_video_and_stores_original(
             "title": "Boss clip",
             "description": "Context",
             "edited": "true",
-            "tags": ["boss", "clip"],
+            "tag_ids": [str(make_video_tag().id), str(make_video_tag().id)],
         },
         files={"file": ("clip.mp4", b"video-bytes", "video/mp4")},
     )
@@ -217,6 +218,31 @@ def test_list_and_create_custom_video_categories(
     assert body["steam_appid"] is None
     assert body["thumbnail_vertical_url"] == "https://cdn.example.com/indie-v.jpg"
     assert video_category_repository.created[0].name == "Indie"
+
+
+@pytest.mark.http
+def test_list_and_create_video_tags(
+    app,
+    client,
+    user_factory,
+    video_tag_repository,
+) -> None:
+    user = user_factory()
+    video_tag_repository.add(make_video_tag(name="Existing"))
+    app.dependency_overrides[get_video_tag_repository] = lambda: video_tag_repository
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    response = client.get("/tags")
+
+    assert response.status_code == 200
+    assert response.json()[0]["name"] == "Existing"
+
+    response = client.post("/tags", json={"name": "Boss"})
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["name"] == "Boss"
+    assert video_tag_repository.created[0].name == "Boss"
 
 
 @pytest.mark.http
@@ -817,6 +843,44 @@ def test_patch_video_updates_metadata_and_only_sets_edited_when_requested(
     body = response.json()
     assert body["edited"] is True
     assert body["edited_at"] is None
+
+
+@pytest.mark.http
+def test_patch_video_replaces_tags_independently_from_categories(
+    app,
+    client,
+    user_factory,
+    video_factory,
+    video_repository,
+) -> None:
+    owner = user_factory()
+    category = make_video_category(name="Speedrun")
+    boss_tag = video_repository.add_tag(make_video_tag(name="boss"))
+    clip_tag = video_repository.add_tag(make_video_tag(name="clip"))
+    video = video_repository.add(
+        video_factory(
+            owner_id=owner.id,
+            categories=[category],
+            tags=[make_video_tag(name="old")],
+        )
+    )
+    app.dependency_overrides[get_video_repository] = lambda: video_repository
+    app.dependency_overrides[get_current_user] = lambda: owner
+
+    response = client.patch(
+        f"/videos/{video.id}",
+        json={"tag_ids": [str(boss_tag.id), str(clip_tag.id), str(boss_tag.id)]},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [tag["name"] for tag in body["tags"]] == ["boss", "clip"]
+    assert [category["id"] for category in body["categories"]] == [str(category.id)]
+    assert video_repository.updated[-1][1]["tag_ids"] == [
+        boss_tag.id,
+        clip_tag.id,
+    ]
+    assert video_repository.updated[-1][1]["category_ids"] is None
 
 
 @pytest.mark.http

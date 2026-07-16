@@ -14,12 +14,14 @@ from app.modules.videos.domain.ports import (
     VideoProcessingQueue,
     VideoRepository,
     VideoStorage,
+    VideoTagRepository,
     VideoTranscoder,
 )
 from app.modules.videos.infrastructure.queue import RqVideoProcessingQueue
 from app.modules.videos.infrastructure.repository import (
     SqlAlchemyVideoCategoryRepository,
     SqlAlchemyVideoRepository,
+    SqlAlchemyVideoTagRepository,
 )
 from app.shared.infrastructure.db.session import get_db
 from app.shared.infrastructure.providers.storage.video_storage import LocalVideoStorage
@@ -34,6 +36,12 @@ def get_video_category_repository(
     db: Session = Depends(get_db),
 ) -> VideoCategoryRepository:
     return SqlAlchemyVideoCategoryRepository(db)
+
+
+def get_video_tag_repository(
+    db: Session = Depends(get_db),
+) -> VideoTagRepository:
+    return SqlAlchemyVideoTagRepository(db)
 
 
 def get_video_storage() -> VideoStorage:

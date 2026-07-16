@@ -17,6 +17,7 @@ from tests.fakes import (
     FakeUserRepository,
     FakeVideoRepository,
     FakeVideoStorage,
+    FakeVideoTagRepository,
     FakeVideoTranscoder,
 )
 
@@ -54,6 +55,11 @@ def video_repository():
 @pytest.fixture
 def video_category_repository():
     return FakeVideoCategoryRepository()
+
+
+@pytest.fixture
+def video_tag_repository():
+    return FakeVideoTagRepository()
 
 
 @pytest.fixture

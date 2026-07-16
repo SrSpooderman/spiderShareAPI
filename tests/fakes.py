@@ -16,6 +16,8 @@ from app.modules.videos.domain.video import (
     VideoProcessingResult,
     VideoProcessingStatus,
     VideoReaction,
+    VideoTag,
+    VideoTagCreate,
     video_popularity_score,
 )
 from app.shared.infrastructure.providers.steam.steam_client import SteamApiError
@@ -24,6 +26,7 @@ from tests.factories import (
     make_user,
     make_video,
     make_video_category,
+    make_video_tag,
     make_video_variant,
     utc_now,
 )
@@ -190,13 +193,20 @@ class FakeVideoRepository:
         self.processing_errors: dict[UUID, list[VideoProcessingError]] = {}
         self.favorites: set[tuple[UUID, UUID]] = set()
         self.reactions: dict[tuple[UUID, UUID, str], VideoReaction] = {}
+        self.tags: dict[UUID, VideoTag] = {}
 
         for video in videos or []:
             self.add(video)
 
     def add(self, video: Video) -> Video:
         self.videos[video.id] = video
+        for tag in video.tags:
+            self.tags[tag.id] = tag
         return video
+
+    def add_tag(self, tag: VideoTag) -> VideoTag:
+        self.tags[tag.id] = tag
+        return tag
 
     def get_by_id(self, video_id: UUID) -> Video | None:
         return self.videos.get(video_id)
@@ -229,12 +239,12 @@ class FakeVideoRepository:
                 for video in videos
                 if category_ids & {category.id for category in video.categories}
             ]
-        if filters.tags:
-            tag_names = {tag.strip() for tag in filters.tags if tag.strip()}
+        if filters.tag_ids:
+            tag_ids = set(filters.tag_ids)
             videos = [
                 video
                 for video in videos
-                if tag_names & {tag.name for tag in video.tags}
+                if tag_ids & {tag.id for tag in video.tags}
             ]
 
         videos = sorted(
@@ -257,6 +267,7 @@ class FakeVideoRepository:
                 original_filename=video.original_filename,
                 is_registered_only=video.is_registered_only,
                 edited=video.edited,
+                tags=self._tags_for_ids(video.tag_ids),
             )
         )
 
@@ -373,7 +384,7 @@ class FakeVideoRepository:
         is_registered_only: bool | None = None,
         edited: bool | None = None,
         category_ids: list[UUID] | None = None,
-        tags: list[str] | None = None,
+        tag_ids: list[UUID] | None = None,
     ) -> Video | None:
         video = self.videos.get(video_id)
         if video is None:
@@ -385,7 +396,7 @@ class FakeVideoRepository:
             "is_registered_only": is_registered_only,
             "edited": edited,
             "category_ids": category_ids,
-            "tags": tags,
+            "tag_ids": tag_ids,
         }
         self.updated.append((video_id, changes))
 
@@ -400,11 +411,22 @@ class FakeVideoRepository:
                 else video.is_registered_only
             ),
             edited=edited if edited is not None else video.edited,
+            tags=self._tags_for_ids(tag_ids) if tag_ids is not None else video.tags,
             updated_at=now,
         )
         self.videos[video_id] = updated_video
 
         return updated_video
+
+    def _tags_for_ids(self, tag_ids: list[UUID]) -> list[VideoTag]:
+        tags = []
+        for tag_id in dict.fromkeys(tag_ids):
+            tag = self.tags.get(tag_id)
+            if tag is None:
+                tag = make_video_tag(id=tag_id, name=str(tag_id))
+                self.tags[tag_id] = tag
+            tags.append(tag)
+        return tags
 
     def delete(self, video_id: UUID) -> bool:
         self.deleted.append(video_id)
@@ -600,6 +622,33 @@ class FakeVideoCategoryRepository:
 
     def delete(self, category_id: UUID) -> bool:
         return self.categories.pop(category_id, None) is not None
+
+
+class FakeVideoTagRepository:
+    def __init__(self, tags: list[VideoTag] | None = None) -> None:
+        self.tags: dict[UUID, VideoTag] = {}
+        self.created: list[VideoTagCreate] = []
+
+        for tag in tags or []:
+            self.add(tag)
+
+    def add(self, tag: VideoTag) -> VideoTag:
+        self.tags[tag.id] = tag
+        return tag
+
+    def list(self) -> list[VideoTag]:
+        return sorted(self.tags.values(), key=lambda tag: tag.name)
+
+    def create(self, tag: VideoTagCreate) -> VideoTag:
+        self.created.append(tag)
+        existing = next(
+            (stored_tag for stored_tag in self.tags.values() if stored_tag.name == tag.name),
+            None,
+        )
+        if existing is not None:
+            return existing
+
+        return self.add(make_video_tag(name=tag.name))
 
 
 class FakeVideoStorage:

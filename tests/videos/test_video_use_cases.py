@@ -1,4 +1,5 @@
 from io import BytesIO
+from uuid import uuid4
 
 import pytest
 
@@ -196,7 +197,7 @@ def test_upload_video_saves_file_and_creates_video(user_factory, video_storage) 
             content_type="video/mp4",
             file=BytesIO(b"video-bytes"),
             edited=True,
-            tags=["boss"],
+            tag_ids=[uuid4()],
         )
     )
 

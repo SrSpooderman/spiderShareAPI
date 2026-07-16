@@ -12,8 +12,8 @@ from app.modules.videos.domain.ports import (
 @dataclass(frozen=True)
 class ListVideosQuery:
     title: str | None = None
-    tags: list[str] | None = None
     category_ids: list[UUID] | None = None
+    tag_ids: list[UUID] | None = None
     owner_id: UUID | None = None
     limit: int = 20
     offset: int = 0
@@ -32,8 +32,8 @@ class ListVideos:
             current_user_id=current_user.id if current_user is not None else None,
             filters=VideoListFilters(
                 title=query.title,
-                tags=query.tags,
                 category_ids=query.category_ids,
+                tag_ids=query.tag_ids,
                 owner_id=query.owner_id,
             ),
             limit=query.limit,

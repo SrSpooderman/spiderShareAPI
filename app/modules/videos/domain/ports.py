@@ -11,6 +11,8 @@ from app.modules.videos.domain.video import (
     VideoCreate,
     VideoProcessingResult,
     VideoReaction,
+    VideoTag,
+    VideoTagCreate,
     VideoVariantType,
 )
 
@@ -18,8 +20,8 @@ from app.modules.videos.domain.video import (
 @dataclass(frozen=True)
 class VideoListFilters:
     title: str | None = None
-    tags: list[str] | None = None
     category_ids: list[UUID] | None = None
+    tag_ids: list[UUID] | None = None
     owner_id: UUID | None = None
 
 
@@ -87,7 +89,7 @@ class VideoRepository(ABC):
         is_registered_only: bool | None = None,
         edited: bool | None = None,
         category_ids: list[UUID] | None = None,
-        tags: list[str] | None = None,
+        tag_ids: list[UUID] | None = None,
     ) -> Video | None:
         pass
 
@@ -171,6 +173,16 @@ class VideoCategoryRepository(ABC):
 
     @abstractmethod
     def upsert_steam_category(self, category: VideoCategoryCreate) -> VideoCategory:
+        pass
+
+
+class VideoTagRepository(ABC):
+    @abstractmethod
+    def list(self) -> list[VideoTag]:
+        pass
+
+    @abstractmethod
+    def create(self, tag: VideoTagCreate) -> VideoTag:
         pass
 
 

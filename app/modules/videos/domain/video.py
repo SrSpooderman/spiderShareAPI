@@ -76,6 +76,11 @@ class VideoTag:
     updated_at: datetime
 
 
+@dataclass(frozen=True)
+class VideoTagCreate:
+    name: str
+
+
 @dataclass
 class VideoFavorite:
     id: UUID
@@ -154,7 +159,7 @@ class VideoCreate:
     is_registered_only: bool = False
     edited: bool = False
     category_ids: list[UUID] = field(default_factory=list)
-    tags: list[str] = field(default_factory=list)
+    tag_ids: list[UUID] = field(default_factory=list)
 
 
 @dataclass

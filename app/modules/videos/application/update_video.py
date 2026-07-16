@@ -15,7 +15,7 @@ class UpdateVideoCommand:
     is_registered_only: bool | None = None
     edited: bool | None = None
     category_ids: list[UUID] | None = None
-    tags: list[str] | None = None
+    tag_ids: list[UUID] | None = None
 
 
 class UpdateVideo:
@@ -38,7 +38,7 @@ class UpdateVideo:
             is_registered_only=command.is_registered_only,
             edited=command.edited,
             category_ids=command.category_ids,
-            tags=command.tags,
+            tag_ids=command.tag_ids,
         )
 
         if updated_video is None:

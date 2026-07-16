@@ -54,6 +54,18 @@ class VideoTagResponse(BaseModel):
         return cls(id=tag.id, name=tag.name)
 
 
+class VideoTagCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def name_must_not_be_blank(cls, value: str) -> str:
+        name = value.strip()
+        if not name:
+            raise ValueError("name cannot be blank")
+        return name
+
+
 class VideoOwnerResponse(BaseModel):
     id: UUID
     username: str
@@ -355,7 +367,7 @@ class BulkVideoUploadItemRequest(BaseModel):
     description: str | None = Field(default=None, max_length=5000)
     is_registered_only: bool = False
     category_ids: list[UUID] = Field(default_factory=list)
-    tags: list[str] = Field(default_factory=list)
+    tag_ids: list[UUID] = Field(default_factory=list)
 
     @field_validator("title", mode="before")
     @classmethod
@@ -365,13 +377,13 @@ class BulkVideoUploadItemRequest(BaseModel):
             raise ValueError("value cannot be blank")
         return text
 
-    @field_validator("tags", mode="after")
+    @field_validator("tag_ids", mode="after")
     @classmethod
-    def tags_must_fit_limit(cls, value: list[str]) -> list[str]:
-        tags = [tag.strip() for tag in value if tag.strip()]
-        if len(tags) > settings.max_video_tags:
+    def tag_ids_must_fit_limit(cls, value: list[UUID]) -> list[UUID]:
+        tag_ids = list(dict.fromkeys(value))
+        if len(tag_ids) > settings.max_video_tags:
             raise ValueError("too many tags")
-        return tags
+        return tag_ids
 
 
 class BulkVideoUploadResponse(BaseModel):
@@ -385,7 +397,7 @@ class VideoUpdateRequest(BaseModel):
     is_registered_only: bool | None = None
     edited: bool | None = None
     category_ids: list[UUID] | None = None
-    tags: list[str] | None = None
+    tag_ids: list[UUID] | None = None
 
     @field_validator("title", "description", mode="before")
     @classmethod
@@ -398,16 +410,16 @@ class VideoUpdateRequest(BaseModel):
             raise ValueError("value cannot be blank")
         return text
 
-    @field_validator("tags", mode="after")
+    @field_validator("tag_ids", mode="after")
     @classmethod
-    def tags_must_fit_limit(cls, value: list[str] | None) -> list[str] | None:
+    def tag_ids_must_fit_limit(cls, value: list[UUID] | None) -> list[UUID] | None:
         if value is None:
             return value
 
-        tags = [tag.strip() for tag in value if tag.strip()]
-        if len(tags) > settings.max_video_tags:
+        tag_ids = list(dict.fromkeys(value))
+        if len(tag_ids) > settings.max_video_tags:
             raise ValueError("too many tags")
-        return tags
+        return tag_ids
 
 
 class VideoReactionRequest(BaseModel):

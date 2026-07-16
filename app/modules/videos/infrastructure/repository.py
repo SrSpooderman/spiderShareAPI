@@ -9,6 +9,7 @@ from app.modules.videos.domain.ports import (
     VideoListFilters,
     VideoListResult,
     VideoRepository,
+    VideoTagRepository,
 )
 from app.modules.videos.domain.video import (
     Video,
@@ -18,12 +19,15 @@ from app.modules.videos.domain.video import (
     VideoProcessingResult,
     VideoProcessingStatus,
     VideoReaction,
+    VideoTag,
+    VideoTagCreate,
 )
 from app.modules.videos.infrastructure.mappers import (
     video_category_model_to_domain,
     video_reaction_model_to_domain,
     video_create_to_model,
     video_model_to_domain,
+    video_tag_model_to_domain,
 )
 from app.modules.videos.infrastructure.models import (
     VideoCategoryAssignmentModel,
@@ -133,6 +137,30 @@ class SqlAlchemyVideoCategoryRepository(VideoCategoryRepository):
         return video_category_model_to_domain(model)
 
 
+class SqlAlchemyVideoTagRepository(VideoTagRepository):
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def list(self) -> list[VideoTag]:
+        models = self.session.scalars(
+            select(VideoTagModel).order_by(VideoTagModel.name.asc())
+        ).all()
+
+        return [video_tag_model_to_domain(model) for model in models]
+
+    def create(self, tag: VideoTagCreate) -> VideoTag:
+        model = self.session.scalar(
+            select(VideoTagModel).where(VideoTagModel.name == tag.name)
+        )
+        if model is None:
+            model = VideoTagModel(name=tag.name)
+            self.session.add(model)
+            self.session.commit()
+            self.session.refresh(model)
+
+        return video_tag_model_to_domain(model)
+
+
 class SqlAlchemyVideoRepository(VideoRepository):
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -190,7 +218,7 @@ class SqlAlchemyVideoRepository(VideoRepository):
         self.session.flush()
 
         self._replace_category_assignments(model, video.category_ids)
-        self._replace_tag_assignments(model, video.tags)
+        self._replace_tag_assignments(model, video.tag_ids)
 
         video_id = UUID(model.id)
         self.session.commit()
@@ -304,7 +332,7 @@ class SqlAlchemyVideoRepository(VideoRepository):
         is_registered_only: bool | None = None,
         edited: bool | None = None,
         category_ids: list[UUID] | None = None,
-        tags: list[str] | None = None,
+        tag_ids: list[UUID] | None = None,
     ) -> Video | None:
         model = self._get_model(video_id)
 
@@ -321,8 +349,8 @@ class SqlAlchemyVideoRepository(VideoRepository):
             model.edited = edited
         if category_ids is not None:
             self._replace_category_assignments(model, category_ids)
-        if tags is not None:
-            self._replace_tag_assignments(model, tags)
+        if tag_ids is not None:
+            self._replace_tag_assignments(model, tag_ids)
 
         self.session.commit()
         model = self._get_model(video_id)
@@ -543,14 +571,14 @@ class SqlAlchemyVideoRepository(VideoRepository):
                     )
                 )
             )
-        if filters.tags:
-            tag_names = [tag.strip() for tag in filters.tags if tag.strip()]
-            if tag_names:
-                conditions.append(
-                    VideoModel.tag_assignments.any(
-                        VideoTagAssignmentModel.tag.has(VideoTagModel.name.in_(tag_names))
+        if filters.tag_ids:
+            conditions.append(
+                VideoModel.tag_assignments.any(
+                    VideoTagAssignmentModel.tag_id.in_(
+                        [str(tag_id) for tag_id in filters.tag_ids]
                     )
                 )
+            )
 
         return conditions
 
@@ -575,30 +603,15 @@ class SqlAlchemyVideoRepository(VideoRepository):
             ]
         )
 
-    def _replace_tag_assignments(self, model: VideoModel, tags: list[str]) -> None:
+    def _replace_tag_assignments(self, model: VideoModel, tag_ids: list[UUID]) -> None:
         model.tag_assignments.clear()
         self.session.flush()
         model.tag_assignments.extend(
             [
                 VideoTagAssignmentModel(
                     video_id=model.id,
-                    tag_id=self._get_or_create_tag(tag).id,
+                    tag_id=str(tag_id),
                 )
-                for tag in dict.fromkeys(
-                    normalized for normalized in map(str.strip, tags) if normalized
-                )
+                for tag_id in dict.fromkeys(tag_ids)
             ]
         )
-
-    def _get_or_create_tag(self, name: str) -> VideoTagModel:
-        statement = select(VideoTagModel).where(VideoTagModel.name == name)
-        model = self.session.scalar(statement)
-
-        if model is not None:
-            return model
-
-        model = VideoTagModel(name=name)
-        self.session.add(model)
-        self.session.flush()
-
-        return model
