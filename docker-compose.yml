@@ -110,7 +110,3 @@ volumes:
 networks:
   spidershare_network:
     driver: bridge
-
-  proxy_network:
-    external: true
-    name: ${PROXY_NETWORK_NAME:-caddy}
