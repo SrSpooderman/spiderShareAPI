@@ -592,7 +592,9 @@ def _clip_video_response(
             detail="Video is not ready",
         )
 
-    variant_path = video_storage.get_variant_path(video_id, VideoVariantType.LOW_H264)
+    variant_path = video_storage.get_variant_path(video_id, VideoVariantType.ORIGINAL_H264)
+    if variant_path is None:
+        variant_path = video_storage.get_variant_path(video_id, VideoVariantType.LOW_H264)
     _ensure_file_exists(variant_path)
 
     return FileResponse(

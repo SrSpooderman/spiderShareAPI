@@ -22,6 +22,7 @@ class VideoProcessingStatus(str, Enum):
 class VideoVariantType(str, Enum):
     ORIGINAL = "original"
     ORIGINAL_AV1 = "original_av1"
+    ORIGINAL_H264 = "original_h264"
     LOW_H264 = "low_h264"
 
 

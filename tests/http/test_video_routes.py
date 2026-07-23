@@ -10,7 +10,7 @@ from app.modules.videos.wiring import (
     get_video_tag_repository,
 )
 from app.modules.steam.wiring import get_steamgriddb_client
-from app.modules.videos.domain.video import VideoProcessingStatus
+from app.modules.videos.domain.video import VideoProcessingStatus, VideoVariantType
 from tests.factories import make_video_category, make_video_tag, make_video_variant
 from tests.fakes import FakeSteamGridDbClient
 
@@ -724,17 +724,25 @@ def test_video_download_stream_and_thumbnail_respect_visibility(
                 make_video_variant(
                     video_id=owner.id,
                     path="variants/video/low_h264.mp4",
-                )
+                ),
+                make_video_variant(
+                    video_id=owner.id,
+                    variant_type=VideoVariantType.ORIGINAL_H264,
+                    path="variants/video/original_h264.mp4",
+                ),
             ],
         )
     )
     original_path = tmp_path / "original.mp4"
+    original_h264_path = tmp_path / "original_h264.mp4"
     stream_path = tmp_path / "low_h264.mp4"
     thumbnail_path = tmp_path / "thumbnail.jpg"
     original_path.write_bytes(b"original-video")
+    original_h264_path.write_bytes(b"original-h264-video")
     stream_path.write_bytes(b"stream-video")
     thumbnail_path.write_bytes(b"thumbnail")
     video_storage.original_paths[video.id] = original_path
+    video_storage.variant_paths[(video.id, "original_h264")] = original_h264_path
     video_storage.variant_paths[(video.id, "low_h264")] = stream_path
     video_storage.thumbnail_paths[video.id] = thumbnail_path
     app.dependency_overrides[get_video_repository] = lambda: video_repository
@@ -756,7 +764,7 @@ def test_video_download_stream_and_thumbnail_respect_visibility(
     response = client.get(f"/clip/{video.id}")
 
     assert response.status_code == 200
-    assert response.content == b"stream-video"
+    assert response.content == b"original-h264-video"
     assert response.headers["content-type"].startswith("video/mp4")
     assert response.headers["content-disposition"].startswith("inline;")
 
