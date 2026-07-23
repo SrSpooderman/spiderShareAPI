@@ -584,6 +584,8 @@ def _clip_video_response(
     current_user: User | None,
     get_video_use_case: GetVideo,
     video_storage: VideoStorage,
+    *,
+    prefer_original_h264: bool = True,
 ) -> FileResponse:
     video = _get_accessible_video(video_id, current_user, get_video_use_case)
     if video.processing_status != VideoProcessingStatus.READY:
@@ -592,7 +594,11 @@ def _clip_video_response(
             detail="Video is not ready",
         )
 
-    variant_path = video_storage.get_variant_path(video_id, VideoVariantType.ORIGINAL_H264)
+    variant_path = (
+        video_storage.get_variant_path(video_id, VideoVariantType.ORIGINAL_H264)
+        if prefer_original_h264
+        else None
+    )
     if variant_path is None:
         variant_path = video_storage.get_variant_path(video_id, VideoVariantType.LOW_H264)
     _ensure_file_exists(variant_path)
@@ -622,7 +628,13 @@ def clip_video_h264(
     get_video_use_case: GetVideo = Depends(get_get_video),
     video_storage: VideoStorage = Depends(get_video_storage),
 ) -> FileResponse:
-    return _clip_video_response(video_id, current_user, get_video_use_case, video_storage)
+    return _clip_video_response(
+        video_id,
+        current_user,
+        get_video_use_case,
+        video_storage,
+        prefer_original_h264=False,
+    )
 
 
 @router.get("/videos/{video_id}/thumbnail")

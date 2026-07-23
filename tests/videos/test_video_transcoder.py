@@ -82,6 +82,7 @@ def test_transcoder_generates_only_low_h264_variant(tmp_path, monkeypatch) -> No
     assert [variant.codec for variant in result.variants] == ["h264"]
     assert len(commands) == 2
     assert all("libaom-av1" not in command for command in commands)
+    assert all("yuv420p" in command for command in commands[:1])
 
 
 @pytest.mark.unit
@@ -124,6 +125,8 @@ def test_transcoder_generates_original_h264_variant_for_av1_source(tmp_path, mon
     assert len(commands) == 3
     assert commands[0][-1].endswith("original_h264.mp4")
     assert commands[1][-1].endswith("low_h264.mp4")
+    assert commands[0][commands[0].index("-pix_fmt") + 1] == "yuv420p"
+    assert commands[1][commands[1].index("-pix_fmt") + 1] == "yuv420p"
 
 
 @pytest.mark.unit
