@@ -153,6 +153,53 @@ def test_oidc_authorize_and_callback_return_internal_token(
 
 
 @pytest.mark.http
+def test_oidc_authorize_and_callback_strip_configured_redirect_uri(
+    app,
+    client,
+    monkeypatch,
+    user_factory,
+) -> None:
+    monkeypatch.setattr(settings, "oidc_enabled", True)
+    monkeypatch.setattr(
+        settings,
+        "oidc_redirect_uri",
+        " https://api.example.com/auth/oidc/callback ",
+    )
+    user = user_factory(username="alice")
+    oidc_login = StubOidcLogin(
+        result=LoginResult(
+            access_token="oidc-token",
+            token_type="bearer",
+            user=PublicUser(
+                id=user.id,
+                username=user.username,
+                display_name=user.display_name,
+                bio=user.bio,
+                ldap=True,
+                role=user.role,
+                is_active=user.is_active,
+                last_seen_version=user.last_seen_version,
+                last_login_at=user.last_login_at,
+                created_at=user.created_at,
+                updated_at=user.updated_at,
+            ),
+        )
+    )
+    app.dependency_overrides[get_oidc_login] = lambda: oidc_login
+
+    authorize_response = client.get("/auth/oidc/authorize")
+    state = authorize_response.json()["state"]
+    assert oidc_login.redirect_uri == "https://api.example.com/auth/oidc/callback"
+
+    client.post(
+        "/auth/oidc/callback",
+        json={"code": "code-123", "state": state},
+    )
+
+    assert oidc_login.command.redirect_uri == "https://api.example.com/auth/oidc/callback"
+
+
+@pytest.mark.http
 def test_oidc_authorize_and_get_callback_use_configured_redirect_uri(
     app,
     client,

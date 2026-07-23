@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "@/modules/auth/AuthContext";
@@ -39,8 +39,15 @@ export function OidcCallbackPage() {
   const [error, setError] = useState<string | null>(null);
   const [retryReturnTo, setRetryReturnTo] = useState<string>("/dashboard");
   const [isRetrying, setIsRetrying] = useState(false);
+  const processedCallbackRef = useRef<string | null>(null);
 
   useEffect(() => {
+    const callbackKey = searchParams.toString();
+    if (processedCallbackRef.current === callbackKey) {
+      return;
+    }
+    processedCallbackRef.current = callbackKey;
+
     const oidcError = searchParams.get("error");
     const accessToken = searchParams.get("access_token");
     const code = searchParams.get("code");

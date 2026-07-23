@@ -88,7 +88,7 @@ export function LoginPage() {
           </button>
 
           <div className="login-divider" role="separator">
-            <span>o entra con usuario local</span>
+            <span>o inicia con SSO</span>
           </div>
 
           <button className="button primary" disabled={isStartingSso} onClick={handleSsoLogin} type="button">

@@ -156,7 +156,7 @@ def _validate_oidc_state(state: str) -> dict:
 def _oidc_redirect_uri() -> str:
     configured_redirect_uri = settings.oidc_redirect_uri
     if configured_redirect_uri and configured_redirect_uri.strip():
-        return configured_redirect_uri
+        return configured_redirect_uri.strip()
 
     raise HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -332,7 +332,7 @@ def oidc_callback_redirect(
         )
     except OidcAuthenticationError as error:
         logger.warning("OIDC login failed reason=%s", str(error))
-        return_to = str(state_payload.get("return_to"))
+        return_to = str(state_payload.get("return_to") or "/dashboard")
         redirect_url = _redirect_with_query(
             _oidc_frontend_callback_uri(str(state_payload.get("frontend_origin") or "")),
             {
