@@ -1,12 +1,17 @@
 import json
 from typing import Any
 from urllib.parse import urlencode
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from jose import JWTError, jwt
 
 from app.modules.auth.application.oidc_login import OidcAuthenticationError, OidcIdentity
+from app.shared.infrastructure.logging import get_logger
 from config.settings import settings
+
+
+logger = get_logger(__name__)
 
 
 class KeycloakOidcProvider:
@@ -61,6 +66,16 @@ class KeycloakOidcProvider:
         try:
             with urlopen(request, timeout=10) as response:
                 payload = json.loads(response.read().decode("utf-8"))
+        except HTTPError as error:
+            response_body = error.read().decode("utf-8", errors="replace")
+            logger.warning(
+                "OIDC token exchange failed status=%s reason=%s body=%s redirect_uri=%s",
+                error.code,
+                error.reason,
+                response_body[:500],
+                redirect_uri,
+            )
+            raise OidcAuthenticationError("OIDC token exchange failed") from error
         except Exception as error:
             raise OidcAuthenticationError("OIDC token exchange failed") from error
 

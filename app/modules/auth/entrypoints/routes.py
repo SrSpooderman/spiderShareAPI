@@ -278,11 +278,13 @@ def oidc_authorize(
 ) -> OidcAuthorizeResponse:
     _ensure_oidc_enabled()
     state = _create_oidc_state(return_to)
+    redirect_uri = _oidc_redirect_uri()
+    state_payload = _validate_oidc_state(state)
 
     try:
         authorization_url = oidc_login.authorization_url(
             state=state,
-            redirect_uri=_oidc_redirect_uri(),
+            redirect_uri=redirect_uri,
         )
     except OidcAuthenticationError as error:
         logger.warning("OIDC authorize failed reason=%s", str(error))
@@ -291,6 +293,12 @@ def oidc_authorize(
             detail="OIDC login is not available",
         )
 
+    logger.info(
+        "OIDC authorize created redirect_uri=%s frontend_origin=%s return_to=%s",
+        redirect_uri,
+        state_payload.get("frontend_origin"),
+        state_payload.get("return_to"),
+    )
     return OidcAuthorizeResponse(authorization_url=authorization_url, state=state)
 
 
@@ -302,12 +310,19 @@ def oidc_callback_redirect(
 ) -> RedirectResponse:
     _ensure_oidc_enabled()
     state_payload = _validate_oidc_state(state)
+    redirect_uri = _oidc_redirect_uri()
+    logger.info(
+        "OIDC callback received redirect_uri=%s frontend_origin=%s return_to=%s",
+        redirect_uri,
+        state_payload.get("frontend_origin"),
+        state_payload.get("return_to"),
+    )
 
     try:
         result = oidc_login.execute(
             OidcLoginCommand(
                 code=code,
-                redirect_uri=_oidc_redirect_uri(),
+                redirect_uri=redirect_uri,
             )
         )
     except InactiveUserError:

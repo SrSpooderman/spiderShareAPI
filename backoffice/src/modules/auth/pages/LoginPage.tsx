@@ -54,18 +54,8 @@ export function LoginPage() {
     <main className="login-page">
       <section className="login-panel">
         <ShieldCheck size={32} />
-        <h1>SpiderShare Backoffice</h1>
-        <p>Acceso operativo para administracion, colas, worker y auditoria.</p>
-
-        <button className="button primary" disabled={isStartingSso} onClick={handleSsoLogin} type="button">
-          <KeyRound size={16} />
-          {isStartingSso ? "Redirigiendo..." : "Continuar con SSO"}
-        </button>
-        {ssoError ? <p className="form-error">{ssoError}</p> : null}
-
-        <div className="login-divider" role="separator">
-          <span>o entra con usuario local</span>
-        </div>
+        <h1>Cliponomicon Backoffice</h1>
+        <p>Acceso operativo para administracion.</p>
 
         <form className="login-local-form" onSubmit={handleLocalLogin}>
           <label className="field">
@@ -96,6 +86,17 @@ export function LoginPage() {
           <button className="button ghost" disabled={isSubmittingLocal} type="submit">
             {isSubmittingLocal ? "Entrando..." : "Entrar con usuario local"}
           </button>
+
+          <div className="login-divider" role="separator">
+            <span>o entra con usuario local</span>
+          </div>
+
+          <button className="button primary" disabled={isStartingSso} onClick={handleSsoLogin} type="button">
+            <KeyRound size={16} />
+            {isStartingSso ? "Redirigiendo..." : "Continuar con SSO"}
+          </button>
+          {ssoError ? <p className="form-error">{ssoError}</p> : null}
+
         </form>
       </section>
     </main>
