@@ -51,7 +51,7 @@ class DiscordWebhookNotifier:
         return DiscordWebhookResult(sent=True)
 
     def _clip_url(self, video: Video) -> str:
-        return f"{self.public_clip_base_url.rstrip('/')}/clip/{video.id}"
+        return f"{self.public_clip_base_url.rstrip('/')}/clip/{video.id}/h264"
 
     def _post(self, payload: dict) -> None:
         data = json.dumps(payload).encode("utf-8")

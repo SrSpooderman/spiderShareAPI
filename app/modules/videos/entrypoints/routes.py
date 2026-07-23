@@ -615,6 +615,16 @@ def clip_video(
     return _clip_video_response(video_id, current_user, get_video_use_case, video_storage)
 
 
+@router.get("/clip/{video_id}/h264")
+def clip_video_h264(
+    video_id: UUID,
+    current_user: User | None = Depends(get_optional_current_user),
+    get_video_use_case: GetVideo = Depends(get_get_video),
+    video_storage: VideoStorage = Depends(get_video_storage),
+) -> FileResponse:
+    return _clip_video_response(video_id, current_user, get_video_use_case, video_storage)
+
+
 @router.get("/videos/{video_id}/thumbnail")
 def get_video_thumbnail(
     video_id: UUID,

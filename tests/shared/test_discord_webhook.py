@@ -81,7 +81,7 @@ def test_discord_webhook_posts_public_clip_url(monkeypatch, video_factory) -> No
     payload = json.loads(request.data.decode("utf-8"))
     assert timeout == 10
     assert request.full_url == "https://discord.example/webhook"
-    assert payload["content"] == f"@{video.owner.username}\nhttps://clips.example.com/clip/{video.id}"
+    assert payload["content"] == f"@{video.owner.username}\nhttps://clips.example.com/clip/{video.id}/h264"
     assert payload["allowed_mentions"] == {"parse": []}
 
 
@@ -118,4 +118,4 @@ def test_discord_webhook_uses_backoffice_api_base_url_by_default(
 
     assert result.sent is True
     payload = json.loads(requests[0].data.decode("utf-8"))
-    assert payload["content"] == f"@{video.owner.username}\nhttps://api.example.com/clip/{video.id}"
+    assert payload["content"] == f"@{video.owner.username}\nhttps://api.example.com/clip/{video.id}/h264"

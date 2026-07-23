@@ -768,6 +768,13 @@ def test_video_download_stream_and_thumbnail_respect_visibility(
     assert response.headers["content-type"].startswith("video/mp4")
     assert response.headers["content-disposition"].startswith("inline;")
 
+    response = client.get(f"/clip/{video.id}/h264")
+
+    assert response.status_code == 200
+    assert response.content == b"original-h264-video"
+    assert response.headers["content-type"].startswith("video/mp4")
+    assert response.headers["content-disposition"].startswith("inline;")
+
     response = client.get(f"/videos/{video.id}/stream?variant_type=original")
 
     assert response.status_code == 200
