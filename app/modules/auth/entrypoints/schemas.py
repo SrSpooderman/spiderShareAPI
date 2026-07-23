@@ -43,7 +43,6 @@ class OidcAuthorizeResponse(BaseModel):
 class OidcCallbackRequest(BaseModel):
     code: str = Field(min_length=1)
     state: str = Field(min_length=1)
-    redirect_uri: str = Field(min_length=1, max_length=2048)
 
 
 class UserResponse(BaseModel):

@@ -153,12 +153,10 @@ def _validate_oidc_state(state: str) -> dict:
         )
 
 
-def _oidc_redirect_uri(redirect_uri: str | None = None) -> str:
+def _oidc_redirect_uri() -> str:
     configured_redirect_uri = settings.oidc_redirect_uri
     if configured_redirect_uri and configured_redirect_uri.strip():
         return configured_redirect_uri
-    if redirect_uri and redirect_uri.strip():
-        return redirect_uri
 
     raise HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -275,7 +273,6 @@ async def login(
 
 @router.get("/oidc/authorize", response_model=OidcAuthorizeResponse)
 def oidc_authorize(
-    redirect_uri: str | None = Query(default=None, min_length=1, max_length=2048),
     return_to: str | None = Query(default=None, min_length=1, max_length=2048),
     oidc_login: OidcLogin = Depends(get_oidc_login),
 ) -> OidcAuthorizeResponse:
@@ -285,7 +282,7 @@ def oidc_authorize(
     try:
         authorization_url = oidc_login.authorization_url(
             state=state,
-            redirect_uri=_oidc_redirect_uri(redirect_uri),
+            redirect_uri=_oidc_redirect_uri(),
         )
     except OidcAuthenticationError as error:
         logger.warning("OIDC authorize failed reason=%s", str(error))
@@ -350,7 +347,7 @@ def oidc_callback(
         result = oidc_login.execute(
             OidcLoginCommand(
                 code=request.code,
-                redirect_uri=_oidc_redirect_uri(request.redirect_uri),
+                redirect_uri=_oidc_redirect_uri(),
             )
         )
     except InactiveUserError:

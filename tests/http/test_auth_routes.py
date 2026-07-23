@@ -104,6 +104,7 @@ def test_oidc_authorize_and_callback_return_internal_token(
     user_factory,
 ) -> None:
     monkeypatch.setattr(settings, "oidc_enabled", True)
+    monkeypatch.setattr(settings, "oidc_redirect_uri", "https://api.example.com/auth/oidc/callback")
     user = user_factory(username="alice")
     oidc_login = StubOidcLogin(
         result=LoginResult(
@@ -126,10 +127,7 @@ def test_oidc_authorize_and_callback_return_internal_token(
     )
     app.dependency_overrides[get_oidc_login] = lambda: oidc_login
 
-    authorize_response = client.get(
-        "/auth/oidc/authorize",
-        params={"redirect_uri": "http://localhost:5173/login/oidc/callback"},
-    )
+    authorize_response = client.get("/auth/oidc/authorize")
 
     assert authorize_response.status_code == 200
     state = authorize_response.json()["state"]
@@ -140,13 +138,13 @@ def test_oidc_authorize_and_callback_return_internal_token(
         json={
             "code": "code-123",
             "state": state,
-            "redirect_uri": "http://localhost:5173/login/oidc/callback",
         },
     )
 
     assert callback_response.status_code == 200
     assert callback_response.json()["access_token"] == "oidc-token"
     assert oidc_login.command.code == "code-123"
+    assert oidc_login.command.redirect_uri == "https://api.example.com/auth/oidc/callback"
 
 
 @pytest.mark.http

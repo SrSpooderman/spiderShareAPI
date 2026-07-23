@@ -35,7 +35,7 @@ type AuthContextValue = {
   isSuperAdmin: boolean;
   login: (username: string, password: string) => Promise<void>;
   startOidcLogin: (returnTo: string) => Promise<void>;
-  completeOidcLogin: (code: string, state: string, redirectUri: string) => Promise<void>;
+  completeOidcLogin: (code: string, state: string) => Promise<void>;
   completeOidcRedirect: (accessToken: string) => Promise<void>;
   logout: () => void;
 };
@@ -89,10 +89,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
         );
         window.location.assign(response.authorization_url);
       },
-      async completeOidcLogin(code, state, redirectUri) {
+      async completeOidcLogin(code, state) {
         const response = await apiRequest<LoginResponse>("/auth/oidc/callback", {
           method: "POST",
-          body: JSON.stringify({ code, state, redirect_uri: redirectUri }),
+          body: JSON.stringify({ code, state }),
           skipAuth: true
         });
         storeToken(response.access_token);

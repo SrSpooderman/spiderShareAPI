@@ -42,7 +42,6 @@ export function OidcCallbackPage() {
     const accessToken = searchParams.get("access_token");
     const code = searchParams.get("code");
     const state = searchParams.get("state");
-    const redirectUri = `${window.location.origin}/login/oidc/callback`;
 
     if (accessToken) {
       completeOidcRedirect(accessToken)
@@ -56,7 +55,7 @@ export function OidcCallbackPage() {
       return;
     }
 
-    completeOidcLogin(code, state, redirectUri)
+    completeOidcLogin(code, state)
       .then(() => navigate(consumeOidcReturnTo(), { replace: true }))
       .catch(() => setError("No se pudo completar el login con SSO."));
   }, [completeOidcLogin, completeOidcRedirect, navigate, searchParams]);
