@@ -33,7 +33,6 @@ type AuthContextValue = {
   user: AuthUser | null;
   isAuthenticated: boolean;
   isSuperAdmin: boolean;
-  login: (username: string, password: string) => Promise<void>;
   startOidcLogin: (returnTo: string) => Promise<void>;
   completeOidcLogin: (code: string, state: string, redirectUri: string) => Promise<void>;
   completeOidcRedirect: (accessToken: string) => Promise<void>;
@@ -71,17 +70,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       user,
       isAuthenticated: Boolean(token),
       isSuperAdmin: user?.role === "super_admin",
-      async login(username, password) {
-        const response = await apiRequest<LoginResponse>("/auth/login", {
-          method: "POST",
-          body: JSON.stringify({ username, password }),
-          skipAuth: true
-        });
-        storeToken(response.access_token);
-        storeUser(response.user);
-        setToken(response.access_token);
-        setUser(response.user);
-      },
       async startOidcLogin(returnTo) {
         const response = await apiRequest<OidcAuthorizeResponse>(
           `/auth/oidc/authorize?return_to=${encodeURIComponent(returnTo)}`,
