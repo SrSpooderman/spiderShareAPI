@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     oidc_client_id: str | None = None
     oidc_client_secret: str | None = None
     oidc_scope: str = "openid profile email"
+    oidc_redirect_uri: str | None = None
+    oidc_allowed_frontend_domains: Annotated[list[str], NoDecode] = []
+    oidc_frontend_callback_path: str = "/login/oidc/callback"
     oidc_default_role: str = "user"
     super_admin_username: str | None = None
     super_admin_password: str | None = None
@@ -53,6 +56,15 @@ class Settings(BaseSettings):
             return []
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
+
+    @field_validator("oidc_allowed_frontend_domains", mode="before")
+    @classmethod
+    def parse_oidc_allowed_frontend_domains(cls, value: str | list[str] | None) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [domain.strip() for domain in value.split(",") if domain.strip()]
         return value
 
     @field_validator("log_format")

@@ -15,16 +15,41 @@ function consumeOidcReturnTo() {
   return path;
 }
 
+function safeReturnTo(path: string | null) {
+  if (!path) {
+    return "/dashboard";
+  }
+
+  try {
+    const url = new URL(path, window.location.origin);
+    if (url.origin !== window.location.origin) {
+      return "/dashboard";
+    }
+
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return "/dashboard";
+  }
+}
+
 export function OidcCallbackPage() {
-  const { completeOidcLogin, isAuthenticated } = useAuth();
+  const { completeOidcLogin, completeOidcRedirect, isAuthenticated } = useAuth();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const accessToken = searchParams.get("access_token");
     const code = searchParams.get("code");
     const state = searchParams.get("state");
     const redirectUri = `${window.location.origin}/login/oidc/callback`;
+
+    if (accessToken) {
+      completeOidcRedirect(accessToken)
+        .then(() => navigate(safeReturnTo(searchParams.get("return_to") ?? consumeOidcReturnTo()), { replace: true }))
+        .catch(() => setError("No se pudo completar el login con SSO."));
+      return;
+    }
 
     if (!code || !state) {
       setError("No se pudo completar el login con SSO.");
@@ -34,7 +59,7 @@ export function OidcCallbackPage() {
     completeOidcLogin(code, state, redirectUri)
       .then(() => navigate(consumeOidcReturnTo(), { replace: true }))
       .catch(() => setError("No se pudo completar el login con SSO."));
-  }, [completeOidcLogin, navigate, searchParams]);
+  }, [completeOidcLogin, completeOidcRedirect, navigate, searchParams]);
 
   if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />;

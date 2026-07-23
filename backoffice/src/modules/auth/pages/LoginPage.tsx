@@ -43,7 +43,7 @@ export function LoginPage() {
     rememberOidcReturnTo(from);
 
     try {
-      await startOidcLogin(`${window.location.origin}/login/oidc/callback`);
+      await startOidcLogin(new URL(from, window.location.origin).toString());
     } catch {
       setSsoError("No se pudo iniciar el login con SSO.");
       setIsStartingSso(false);

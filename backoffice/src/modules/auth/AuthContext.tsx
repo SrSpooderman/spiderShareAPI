@@ -34,8 +34,9 @@ type AuthContextValue = {
   isAuthenticated: boolean;
   isSuperAdmin: boolean;
   login: (username: string, password: string) => Promise<void>;
-  startOidcLogin: (redirectUri: string) => Promise<void>;
+  startOidcLogin: (returnTo: string) => Promise<void>;
   completeOidcLogin: (code: string, state: string, redirectUri: string) => Promise<void>;
+  completeOidcRedirect: (accessToken: string) => Promise<void>;
   logout: () => void;
 };
 
@@ -81,9 +82,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setToken(response.access_token);
         setUser(response.user);
       },
-      async startOidcLogin(redirectUri) {
+      async startOidcLogin(returnTo) {
         const response = await apiRequest<OidcAuthorizeResponse>(
-          `/auth/oidc/authorize?redirect_uri=${encodeURIComponent(redirectUri)}`,
+          `/auth/oidc/authorize?return_to=${encodeURIComponent(returnTo)}`,
           { skipAuth: true }
         );
         window.location.assign(response.authorization_url);
@@ -98,6 +99,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
         storeUser(response.user);
         setToken(response.access_token);
         setUser(response.user);
+      },
+      async completeOidcRedirect(accessToken) {
+        storeToken(accessToken);
+        setToken(accessToken);
+
+        try {
+          const currentUser = await apiRequest<AuthUser>("/auth/me");
+          storeUser(currentUser);
+          setUser(currentUser);
+        } catch (error) {
+          clearStoredToken();
+          setToken(null);
+          setUser(null);
+          throw error;
+        }
       },
       logout() {
         clearStoredToken();

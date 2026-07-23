@@ -1,8 +1,10 @@
 
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
+from urllib.parse import urlencode, urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import RedirectResponse
 from jose import JWTError, jwt
 from pydantic import ValidationError
 
@@ -75,22 +77,70 @@ def _ensure_oidc_enabled() -> None:
         )
 
 
-def _create_oidc_state() -> str:
+def _safe_local_path(return_to: str | None) -> str:
+    if not return_to:
+        return "/dashboard"
+
+    cleaned = return_to.strip()
+    if not cleaned.startswith("/") or cleaned.startswith("//") or "://" in cleaned:
+        return "/dashboard"
+
+    return cleaned
+
+
+def _normalized_domain(value: str) -> str:
+    candidate = value.strip().lower().rstrip("/")
+    parsed = urlparse(candidate if "://" in candidate else f"https://{candidate}")
+    return parsed.netloc
+
+
+def _allowed_frontend_domains() -> set[str]:
+    return {
+        normalized
+        for domain in (settings.oidc_allowed_frontend_domains or settings.cors_allowed_origins)
+        if (normalized := _normalized_domain(domain))
+    }
+
+
+def _frontend_state(return_to: str | None) -> dict[str, str]:
+    parsed = urlparse(return_to or "")
+    allowed_domains = _allowed_frontend_domains()
+
+    if parsed.scheme in {"http", "https"} and parsed.netloc:
+        domain = parsed.netloc.lower()
+        if domain not in allowed_domains:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="OIDC return domain is not allowed",
+            )
+
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+        return {"frontend_origin": origin, "return_to": return_to or origin}
+
+    return {
+        "frontend_origin": "",
+        "return_to": _safe_local_path(return_to),
+    }
+
+
+def _create_oidc_state(return_to: str | None = None) -> str:
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+    frontend_state = _frontend_state(return_to)
     return jwt.encode(
         {
             "aud": OIDC_STATE_AUDIENCE,
             "nonce": str(uuid4()),
             "exp": expires_at,
+            **frontend_state,
         },
         settings.secret_key,
         algorithm=settings.jwt_algorithm,
     )
 
 
-def _validate_oidc_state(state: str) -> None:
+def _validate_oidc_state(state: str) -> dict:
     try:
-        jwt.decode(
+        return jwt.decode(
             state,
             settings.secret_key,
             algorithms=[settings.jwt_algorithm],
@@ -101,6 +151,38 @@ def _validate_oidc_state(state: str) -> None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid OIDC state",
         )
+
+
+def _oidc_redirect_uri(redirect_uri: str | None = None) -> str:
+    configured_redirect_uri = settings.oidc_redirect_uri
+    if configured_redirect_uri and configured_redirect_uri.strip():
+        return configured_redirect_uri
+    if redirect_uri and redirect_uri.strip():
+        return redirect_uri
+
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="OIDC redirect URI is not configured",
+    )
+
+
+def _oidc_frontend_callback_uri(frontend_origin: str | None = None) -> str:
+    if frontend_origin and frontend_origin.strip():
+        callback_path = settings.oidc_frontend_callback_path
+        if not callback_path.startswith("/"):
+            callback_path = f"/{callback_path}"
+
+        return f"{frontend_origin.rstrip('/')}{callback_path}"
+
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="OIDC frontend callback domain is not configured",
+    )
+
+
+def _redirect_with_query(base_url: str, params: dict[str, str]) -> str:
+    separator = "&" if "?" in base_url else "?"
+    return f"{base_url}{separator}{urlencode(params)}"
 
 
 @router.post(
@@ -193,16 +275,17 @@ async def login(
 
 @router.get("/oidc/authorize", response_model=OidcAuthorizeResponse)
 def oidc_authorize(
-    redirect_uri: str = Query(..., min_length=1, max_length=2048),
+    redirect_uri: str | None = Query(default=None, min_length=1, max_length=2048),
+    return_to: str | None = Query(default=None, min_length=1, max_length=2048),
     oidc_login: OidcLogin = Depends(get_oidc_login),
 ) -> OidcAuthorizeResponse:
     _ensure_oidc_enabled()
-    state = _create_oidc_state()
+    state = _create_oidc_state(return_to)
 
     try:
         authorization_url = oidc_login.authorization_url(
             state=state,
-            redirect_uri=redirect_uri,
+            redirect_uri=_oidc_redirect_uri(redirect_uri),
         )
     except OidcAuthenticationError as error:
         logger.warning("OIDC authorize failed reason=%s", str(error))
@@ -212,6 +295,47 @@ def oidc_authorize(
         )
 
     return OidcAuthorizeResponse(authorization_url=authorization_url, state=state)
+
+
+@router.get("/oidc/callback", response_class=RedirectResponse)
+def oidc_callback_redirect(
+    code: str = Query(..., min_length=1),
+    state: str = Query(..., min_length=1),
+    oidc_login: OidcLogin = Depends(get_oidc_login),
+) -> RedirectResponse:
+    _ensure_oidc_enabled()
+    state_payload = _validate_oidc_state(state)
+
+    try:
+        result = oidc_login.execute(
+            OidcLoginCommand(
+                code=code,
+                redirect_uri=_oidc_redirect_uri(),
+            )
+        )
+    except InactiveUserError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Inactive user",
+        )
+    except OidcAuthenticationError as error:
+        logger.warning("OIDC login failed reason=%s", str(error))
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="OIDC login failed",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return_to = str(state_payload.get("return_to") or "/dashboard")
+    redirect_url = _redirect_with_query(
+        _oidc_frontend_callback_uri(str(state_payload.get("frontend_origin") or "")),
+        {
+            "access_token": result.access_token,
+            "token_type": result.token_type,
+            "return_to": return_to,
+        },
+    )
+    return RedirectResponse(redirect_url, status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/oidc/callback", response_model=LoginResponse)
@@ -226,7 +350,7 @@ def oidc_callback(
         result = oidc_login.execute(
             OidcLoginCommand(
                 code=request.code,
-                redirect_uri=request.redirect_uri,
+                redirect_uri=_oidc_redirect_uri(request.redirect_uri),
             )
         )
     except InactiveUserError:

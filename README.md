@@ -280,6 +280,18 @@ Variables principales:
 | `SECRET_KEY` | Clave para firmar JWT. Debe ser larga y secreta. |
 | `JWT_ALGORITHM` | Algoritmo JWT. Por defecto `HS256`. |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Minutos de vida del token. |
+| `OIDC_ENABLED` | Activa login OIDC/SSO. |
+| `OIDC_ISSUER_URL` | Issuer del realm/proveedor OIDC. |
+| `OIDC_AUTHORIZATION_ENDPOINT` | Endpoint de autorizacion OIDC opcional; si se omite se deriva del issuer. |
+| `OIDC_TOKEN_ENDPOINT` | Endpoint de token OIDC opcional; si se omite se deriva del issuer. |
+| `OIDC_JWKS_URI` | JWKS OIDC opcional; si se omite se deriva del issuer. |
+| `OIDC_CLIENT_ID` | Client ID registrado en el proveedor OIDC. |
+| `OIDC_CLIENT_SECRET` | Client secret registrado en el proveedor OIDC. |
+| `OIDC_SCOPE` | Scopes solicitados al proveedor OIDC. |
+| `OIDC_REDIRECT_URI` | Callback publico de la API que debe registrarse en el proveedor OIDC, por ejemplo `https://api.example.com/auth/oidc/callback`. |
+| `OIDC_ALLOWED_FRONTEND_DOMAINS` | Dominios frontend autorizados para la vuelta final tras OIDC, separados por comas. Si se omite, se usan los dominios de `CORS_ALLOWED_ORIGINS`. |
+| `OIDC_FRONTEND_CALLBACK_PATH` | Ruta de callback que debe existir en cada frontend autorizado. Por defecto `/login/oidc/callback`. |
+| `OIDC_DEFAULT_ROLE` | Rol asignado a usuarios creados desde OIDC. |
 | `SUPER_ADMIN_USERNAME` | Username inicial del super admin. |
 | `SUPER_ADMIN_PASSWORD` | Password inicial del super admin. |
 | `STEAM_WEB_API_KEY` | API key de Steam. Necesaria para consultar Steam real. |
@@ -330,6 +342,19 @@ ACCESS_TOKEN_EXPIRE_MINUTES=15
 
 SUPER_ADMIN_USERNAME=admin
 SUPER_ADMIN_PASSWORD=change-me-before-first-start
+
+OIDC_ENABLED=false
+OIDC_ISSUER_URL=https://keycloak.tudominio.com/realms/cliponomicon
+OIDC_AUTHORIZATION_ENDPOINT=
+OIDC_TOKEN_ENDPOINT=
+OIDC_JWKS_URI=
+OIDC_CLIENT_ID=cliponomicon
+OIDC_CLIENT_SECRET=
+OIDC_SCOPE=openid profile email
+OIDC_REDIRECT_URI=https://api.example.com/auth/oidc/callback
+OIDC_ALLOWED_FRONTEND_DOMAINS=admin.example.com,www.example.com
+OIDC_FRONTEND_CALLBACK_PATH=/login/oidc/callback
+OIDC_DEFAULT_ROLE=user
 
 VIDEO_STORAGE_PATH=/app/storage/videos
 MAX_VIDEO_SIZE_BYTES=524288000
