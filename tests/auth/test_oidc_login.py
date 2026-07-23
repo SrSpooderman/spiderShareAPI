@@ -74,3 +74,41 @@ def test_oidc_login_does_not_link_existing_local_user_by_email(user_factory) -> 
 
     assert result.user.id != local_user.id
     assert result.user.username.startswith("alice-keycloakuser")
+
+
+@pytest.mark.unit
+def test_oidc_login_reuses_local_user_linked_by_keycloak_subject(user_factory) -> None:
+    oidc_user = user_factory(
+        username="alice",
+        auth_provider=AuthProvider.OIDC,
+        oidc_subject="keycloak-user-id",
+        oidc_email="old@example.com",
+        oidc_name="Old Name",
+        oidc_groups=["old-group"],
+    )
+    repository = FakeUserRepository([oidc_user])
+    access_tokens = FakeAccessTokenService()
+    provider = StubOidcProvider(
+        OidcIdentity(
+            subject="keycloak-user-id",
+            name="Alice Doe",
+            email="alice@example.com",
+            groups=["cliponomicon-admins"],
+        )
+    )
+    login = OidcLogin(repository, access_tokens, provider)
+
+    result = login.execute(
+        OidcLoginCommand(
+            code="auth-code",
+            redirect_uri="https://api.example.com/auth/oidc/callback",
+        )
+    )
+
+    assert result.user.id == oidc_user.id
+    assert result.user.auth_provider == AuthProvider.OIDC
+    assert result.user.oidc_subject == "keycloak-user-id"
+    assert result.user.oidc_email == "alice@example.com"
+    assert result.user.oidc_name == "Alice Doe"
+    assert result.user.oidc_groups == ["cliponomicon-admins"]
+    assert repository.created == []

@@ -317,11 +317,15 @@ def oidc_callback_redirect(
         )
     except OidcAuthenticationError as error:
         logger.warning("OIDC login failed reason=%s", str(error))
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="OIDC login failed",
-            headers={"WWW-Authenticate": "Bearer"},
+        return_to = str(state_payload.get("return_to"))
+        redirect_url = _redirect_with_query(
+            _oidc_frontend_callback_uri(str(state_payload.get("frontend_origin") or "")),
+            {
+                "error": "oidc_login_failed",
+                "return_to": return_to,
+            },
         )
+        return RedirectResponse(redirect_url, status_code=status.HTTP_303_SEE_OTHER)
 
     return_to = str(state_payload.get("return_to") or "/dashboard")
     redirect_url = _redirect_with_query(

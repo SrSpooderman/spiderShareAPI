@@ -7,7 +7,7 @@ from app.modules.auth.application.login import (
     InvalidCredentialsError,
     LoginResult,
 )
-from app.modules.auth.application.oidc_login import OidcLoginCommand
+from app.modules.auth.application.oidc_login import OidcAuthenticationError, OidcLoginCommand
 from app.modules.auth.application.register import (
     PublicUser,
     UsernameAlreadyExistsError,
@@ -47,7 +47,8 @@ class StubRegisterUser:
 
 @dataclass
 class StubOidcLogin:
-    result: LoginResult
+    result: LoginResult | None = None
+    error: Exception | None = None
 
     def authorization_url(self, *, state: str, redirect_uri: str) -> str:
         self.state = state
@@ -56,6 +57,10 @@ class StubOidcLogin:
 
     def execute(self, command: OidcLoginCommand) -> LoginResult:
         self.command = command
+        if self.error is not None:
+            raise self.error
+
+        assert self.result is not None
         return self.result
 
 
@@ -206,6 +211,40 @@ def test_oidc_authorize_and_get_callback_use_configured_redirect_uri(
     assert "access_token=oidc-token" in callback_response.headers["location"]
     assert "return_to=https%3A%2F%2Fadmin.example.com%2Fvideos" in callback_response.headers["location"]
     assert oidc_login.command.code == "code-123"
+    assert oidc_login.command.redirect_uri == "https://api.example.com/auth/oidc/callback"
+
+
+@pytest.mark.http
+def test_oidc_get_callback_redirects_to_frontend_with_error_when_login_fails(
+    app,
+    client,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(settings, "oidc_enabled", True)
+    monkeypatch.setattr(settings, "oidc_redirect_uri", "https://api.example.com/auth/oidc/callback")
+    monkeypatch.setattr(settings, "oidc_allowed_frontend_domains", ["admin.example.com"])
+    monkeypatch.setattr(settings, "oidc_frontend_callback_path", "/login/oidc/callback")
+    oidc_login = StubOidcLogin(error=OidcAuthenticationError("invalid code"))
+    app.dependency_overrides[get_oidc_login] = lambda: oidc_login
+
+    authorize_response = client.get(
+        "/auth/oidc/authorize",
+        params={"return_to": "https://admin.example.com/videos"},
+    )
+    state = authorize_response.json()["state"]
+
+    callback_response = client.get(
+        "/auth/oidc/callback",
+        params={"code": "used-code", "state": state},
+        follow_redirects=False,
+    )
+
+    assert callback_response.status_code == 303
+    assert callback_response.headers["location"].startswith(
+        "https://admin.example.com/login/oidc/callback?"
+    )
+    assert "error=oidc_login_failed" in callback_response.headers["location"]
+    assert "return_to=https%3A%2F%2Fadmin.example.com%2Fvideos" in callback_response.headers["location"]
     assert oidc_login.command.redirect_uri == "https://api.example.com/auth/oidc/callback"
 
 

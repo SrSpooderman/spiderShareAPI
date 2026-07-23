@@ -33,15 +33,25 @@ function safeReturnTo(path: string | null) {
 }
 
 export function OidcCallbackPage() {
-  const { completeOidcLogin, completeOidcRedirect, isAuthenticated } = useAuth();
+  const { completeOidcLogin, completeOidcRedirect, isAuthenticated, startOidcLogin } = useAuth();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
+  const [retryReturnTo, setRetryReturnTo] = useState<string>("/dashboard");
+  const [isRetrying, setIsRetrying] = useState(false);
 
   useEffect(() => {
+    const oidcError = searchParams.get("error");
     const accessToken = searchParams.get("access_token");
     const code = searchParams.get("code");
     const state = searchParams.get("state");
+    const returnTo = safeReturnTo(searchParams.get("return_to"));
+
+    if (oidcError) {
+      setRetryReturnTo(returnTo);
+      setError("No se pudo completar el login con SSO.");
+      return;
+    }
 
     if (accessToken) {
       completeOidcRedirect(accessToken)
@@ -60,6 +70,19 @@ export function OidcCallbackPage() {
       .catch(() => setError("No se pudo completar el login con SSO."));
   }, [completeOidcLogin, completeOidcRedirect, navigate, searchParams]);
 
+  async function handleRetrySso() {
+    setError(null);
+    setIsRetrying(true);
+    rememberOidcReturnTo(retryReturnTo);
+
+    try {
+      await startOidcLogin(new URL(retryReturnTo, window.location.origin).toString());
+    } catch {
+      setError("No se pudo iniciar el login con SSO.");
+      setIsRetrying(false);
+    }
+  }
+
   if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />;
   }
@@ -69,6 +92,11 @@ export function OidcCallbackPage() {
       <section className="login-panel">
         <h1>SpiderShare Backoffice</h1>
         <p>{error ?? "Completando login con SSO..."}</p>
+        {error ? (
+          <button className="button primary" disabled={isRetrying} onClick={handleRetrySso} type="button">
+            {isRetrying ? "Redirigiendo..." : "Reintentar SSO"}
+          </button>
+        ) : null}
       </section>
     </main>
   );
