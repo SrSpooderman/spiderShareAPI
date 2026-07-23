@@ -579,12 +579,11 @@ def stream_video(
     )
 
 
-@router.get("/clip/{video_id}")
-def clip_video(
+def _clip_video_response(
     video_id: UUID,
-    current_user: User | None = Depends(get_optional_current_user),
-    get_video_use_case: GetVideo = Depends(get_get_video),
-    video_storage: VideoStorage = Depends(get_video_storage),
+    current_user: User | None,
+    get_video_use_case: GetVideo,
+    video_storage: VideoStorage,
 ) -> FileResponse:
     video = _get_accessible_video(video_id, current_user, get_video_use_case)
     if video.processing_status != VideoProcessingStatus.READY:
@@ -602,6 +601,16 @@ def clip_video(
         filename=f"{video_id}.mp4",
         content_disposition_type="inline",
     )
+
+
+@router.get("/clip/{video_id}")
+def clip_video(
+    video_id: UUID,
+    current_user: User | None = Depends(get_optional_current_user),
+    get_video_use_case: GetVideo = Depends(get_get_video),
+    video_storage: VideoStorage = Depends(get_video_storage),
+) -> FileResponse:
+    return _clip_video_response(video_id, current_user, get_video_use_case, video_storage)
 
 
 @router.get("/videos/{video_id}/thumbnail")

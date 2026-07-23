@@ -44,14 +44,8 @@ class DiscordWebhookNotifier:
             return DiscordWebhookResult(sent=False, reason="not_ready")
 
         payload = {
-            "content": f"Nuevo clip: {self._clip_url(video)}",
-            "embeds": [
-                {
-                    "title": video.title,
-                    "url": self._clip_url(video),
-                    "description": video.description[:2048] if video.description else None,
-                }
-            ],
+            "content": f"@{_video_username(video)}\n{self._clip_url(video)}",
+            "allowed_mentions": {"parse": []},
         }
         self._post(payload)
         return DiscordWebhookResult(sent=True)
@@ -93,3 +87,10 @@ def _default_public_clip_base_url() -> str | None:
         return None
 
     return base_url
+
+
+def _video_username(video: Video) -> str:
+    if video.owner is None or not video.owner.username.strip():
+        return "usuario"
+
+    return video.owner.username.strip()
