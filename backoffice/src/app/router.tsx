@@ -13,7 +13,6 @@ import { WorkerEventsPage } from "@/modules/worker/pages/WorkerEventsPage";
 import { WorkerQueuePage } from "@/modules/worker/pages/WorkerQueuePage";
 import { WorkerRawLogsPage } from "@/modules/worker/pages/WorkerRawLogsPage";
 
-// Quita la barra final si la hay: "/backoffice/" -> "/backoffice"
 const basename = (import.meta.env.BASE_URL || "/").replace(/\/$/, "") || "/";
 
 export const router = createBrowserRouter(
