@@ -23,6 +23,13 @@ export type DashboardSummary = {
   recentUploads: VideoSummary[];
 };
 
+export type ConfigEntry = {
+  key: string;
+  value: string | number | boolean | string[] | null;
+  valueType: "string" | "number" | "boolean" | "list" | "empty";
+  category: string;
+};
+
 export type ProcessingError = {
   id: string;
   videoId: string;

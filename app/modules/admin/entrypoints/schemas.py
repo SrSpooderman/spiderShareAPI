@@ -17,6 +17,16 @@ class AdminServiceStatusResponse(CamelModel):
     detail: str
 
 
+AdminConfigValue = str | int | float | bool | list[str] | None
+
+
+class AdminConfigEntryResponse(CamelModel):
+    key: str
+    value: AdminConfigValue
+    value_type: str = Field(alias="valueType")
+    category: str
+
+
 class AdminProcessingErrorResponse(CamelModel):
     id: UUID
     video_id: UUID = Field(alias="videoId")

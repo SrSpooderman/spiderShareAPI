@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from app.modules.admin.entrypoints.schemas import (
     AdminAuditEntryResponse,
+    AdminConfigEntryResponse,
     AdminDashboardResponse,
     AdminQueueJobResponse,
     AdminRawLogLineResponse,
@@ -37,9 +38,35 @@ from app.modules.videos.wiring import (
     get_video_repository,
     get_video_storage,
 )
+from config.settings import settings
 
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+SAFE_CONFIG_FIELDS: tuple[tuple[str, str], ...] = (
+    ("app_name", "Aplicacion"),
+    ("app_version", "Aplicacion"),
+    ("app_env", "Aplicacion"),
+    ("app_debug", "Aplicacion"),
+    ("log_level", "Logging"),
+    ("log_format", "Logging"),
+    ("jwt_algorithm", "Auth"),
+    ("access_token_expire_minutes", "Auth"),
+    ("oidc_enabled", "Auth"),
+    ("oidc_scope", "Auth"),
+    ("oidc_frontend_callback_path", "Auth"),
+    ("oidc_default_role", "Auth"),
+    ("max_video_size_bytes", "Videos"),
+    ("max_video_duration_seconds", "Videos"),
+    ("max_video_tags", "Videos"),
+    ("max_video_reactions_per_user", "Videos"),
+    ("video_allowed_mime_types", "Videos"),
+    ("video_processing_queue_name", "Procesamiento"),
+    ("video_processing_max_attempts", "Procesamiento"),
+    ("video_processing_job_timeout_seconds", "Procesamiento"),
+    ("discord_webhook_enabled", "Integraciones"),
+)
 
 
 def _fields_set(request) -> set[str]:
@@ -49,12 +76,41 @@ def _fields_set(request) -> set[str]:
     return getattr(request, "__fields_set__", set())
 
 
+def _config_value_type(value: object) -> str:
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int):
+        return "number"
+    if isinstance(value, float):
+        return "number"
+    if isinstance(value, list):
+        return "list"
+    if value is None:
+        return "empty"
+    return "string"
+
+
 @router.get("/dashboard", response_model=AdminDashboardResponse)
 def admin_dashboard(
     _current_user: User = Depends(require_admin),
     read_model: AdminReadModel = Depends(get_admin_read_model),
 ) -> AdminDashboardResponse:
     return read_model.dashboard()
+
+
+@router.get("/config", response_model=list[AdminConfigEntryResponse])
+def admin_config(
+    _current_user: User = Depends(require_admin),
+) -> list[AdminConfigEntryResponse]:
+    return [
+        AdminConfigEntryResponse(
+            key=key,
+            value=getattr(settings, key),
+            value_type=_config_value_type(getattr(settings, key)),
+            category=category,
+        )
+        for key, category in SAFE_CONFIG_FIELDS
+    ]
 
 
 @router.get("/videos", response_model=list[AdminVideoSummaryResponse])

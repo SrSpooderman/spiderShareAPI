@@ -7,6 +7,7 @@ import {
   LogOut,
   ScrollText,
   ServerCog,
+  Settings,
   ShieldCheck,
   Users
 } from "lucide-react";
@@ -18,6 +19,7 @@ import { Badge } from "@/shared/ui/Badge";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/config", label: "Config", icon: Settings },
   { to: "/videos", label: "Videos", icon: ListVideo },
   { to: "/worker/queue", label: "Cola", icon: ServerCog },
   { to: "/worker/events", label: "Eventos", icon: Activity },

@@ -335,6 +335,11 @@ th {
   font-size: 12px;
 }
 
+.config-value {
+  max-width: 520px;
+  overflow-wrap: anywhere;
+}
+
 .pagination {
   display: flex;
   align-items: center;

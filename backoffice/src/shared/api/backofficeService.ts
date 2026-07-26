@@ -3,6 +3,7 @@ import {
   AuditEntry,
   BackofficeUser,
   BackofficeUserDetail,
+  ConfigEntry,
   DashboardSummary,
   OffsetPagination,
   QueueJob,
@@ -33,6 +34,10 @@ function queryString(params: Record<string, string | number | boolean | undefine
 export const backofficeService = {
   async getDashboard(): Promise<DashboardSummary> {
     return apiRequest<DashboardSummary>("/admin/dashboard");
+  },
+
+  async getConfig(): Promise<ConfigEntry[]> {
+    return apiRequest<ConfigEntry[]>("/admin/config");
   },
 
   async getVideos(filters: VideoListFilters = {}): Promise<VideoSummary[]> {

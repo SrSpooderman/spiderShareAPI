@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import { AppShell } from "@/layouts/AppShell";
 import { AuditPage } from "@/modules/audit/pages/AuditPage";
+import { ConfigPage } from "@/modules/config/pages/ConfigPage";
 import { DashboardPage } from "@/modules/dashboard/pages/DashboardPage";
 import { LoginPage } from "@/modules/auth/pages/LoginPage";
 import { OidcCallbackPage } from "@/modules/auth/pages/OidcCallbackPage";
@@ -33,6 +34,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/dashboard" replace /> },
       { path: "dashboard", element: <DashboardPage /> },
+      { path: "config", element: <ConfigPage /> },
       { path: "videos", element: <VideoListPage /> },
       { path: "videos/:videoId", element: <VideoDetailPage /> },
       { path: "worker/queue", element: <WorkerQueuePage /> },
