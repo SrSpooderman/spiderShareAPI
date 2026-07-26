@@ -182,6 +182,19 @@ class VideoTagRepository(ABC):
         pass
 
     @abstractmethod
+    def get_by_id(self, tag_id: UUID) -> VideoTag | None:
+        pass
+
+    @abstractmethod
+    def search(
+        self,
+        *,
+        id: str | None = None,
+        name: str | None = None,
+    ) -> list[VideoTag]:
+        pass
+
+    @abstractmethod
     def create(self, tag: VideoTagCreate) -> VideoTag:
         pass
 

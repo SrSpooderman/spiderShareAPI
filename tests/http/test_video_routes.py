@@ -246,6 +246,56 @@ def test_list_and_create_video_tags(
 
 
 @pytest.mark.http
+def test_search_video_tags_by_partial_id_name_or_both(
+    app,
+    client,
+    video_tag_repository,
+) -> None:
+    boss = video_tag_repository.add(make_video_tag(name="Boss Fight"))
+    build = video_tag_repository.add(make_video_tag(name="Build Guide"))
+    video_tag_repository.add(make_video_tag(name="Puzzle"))
+    app.dependency_overrides[get_video_tag_repository] = lambda: video_tag_repository
+
+    response = client.get("/tags", params={"name": "bo"})
+
+    assert response.status_code == 200
+    assert [tag["id"] for tag in response.json()] == [str(boss.id)]
+
+    response = client.get("/tags", params={"id": str(build.id)[:8]})
+
+    assert response.status_code == 200
+    assert response.json() == [{"id": str(build.id), "name": "Build Guide"}]
+
+    response = client.get(
+        "/tags",
+        params={"id": str(boss.id)[:8].upper(), "name": "fight"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == [{"id": str(boss.id), "name": "Boss Fight"}]
+
+
+@pytest.mark.http
+def test_get_video_tag_by_id(
+    app,
+    client,
+    video_tag_repository,
+) -> None:
+    tag = video_tag_repository.add(make_video_tag(name="Boss Fight"))
+    app.dependency_overrides[get_video_tag_repository] = lambda: video_tag_repository
+
+    response = client.get(f"/tags/{tag.id}")
+
+    assert response.status_code == 200
+    assert response.json() == {"id": str(tag.id), "name": "Boss Fight"}
+
+    response = client.get(f"/tags/{uuid4()}")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Video tag not found"
+
+
+@pytest.mark.http
 def test_update_video_tag(
     app,
     client,

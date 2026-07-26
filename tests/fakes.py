@@ -639,6 +639,24 @@ class FakeVideoTagRepository:
     def list(self) -> list[VideoTag]:
         return sorted(self.tags.values(), key=lambda tag: tag.name)
 
+    def get_by_id(self, tag_id: UUID) -> VideoTag | None:
+        return self.tags.get(tag_id)
+
+    def search(
+        self,
+        *,
+        id: str | None = None,
+        name: str | None = None,
+    ) -> list[VideoTag]:
+        id_filter = id.lower() if id is not None else None
+        name_filter = name.lower() if name is not None else None
+        tags = self.tags.values()
+        if id_filter is not None:
+            tags = [tag for tag in tags if id_filter in str(tag.id).lower()]
+        if name_filter is not None:
+            tags = [tag for tag in tags if name_filter in tag.name.lower()]
+        return sorted(tags, key=lambda tag: tag.name)
+
     def create(self, tag: VideoTagCreate) -> VideoTag:
         self.created.append(tag)
         existing = next(

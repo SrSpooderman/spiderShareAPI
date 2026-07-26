@@ -148,6 +148,33 @@ class SqlAlchemyVideoTagRepository(VideoTagRepository):
 
         return [video_tag_model_to_domain(model) for model in models]
 
+    def get_by_id(self, tag_id: UUID) -> VideoTag | None:
+        model = self.session.get(VideoTagModel, str(tag_id))
+        if model is None:
+            return None
+
+        return video_tag_model_to_domain(model)
+
+    def search(
+        self,
+        *,
+        id: str | None = None,
+        name: str | None = None,
+    ) -> list[VideoTag]:
+        conditions = []
+        if id:
+            conditions.append(VideoTagModel.id.ilike(f"%{id}%"))
+        if name:
+            conditions.append(VideoTagModel.name.ilike(f"%{name}%"))
+
+        statement = select(VideoTagModel)
+        if conditions:
+            statement = statement.where(*conditions)
+        statement = statement.order_by(VideoTagModel.name.asc())
+
+        models = self.session.scalars(statement).all()
+        return [video_tag_model_to_domain(model) for model in models]
+
     def create(self, tag: VideoTagCreate) -> VideoTag:
         model = self.session.scalar(
             select(VideoTagModel).where(VideoTagModel.name == tag.name)
