@@ -1,5 +1,6 @@
 import hashlib
 import json
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import (
@@ -74,6 +75,7 @@ from config.settings import settings
 router = APIRouter(tags=["videos"])
 logger = get_logger(__name__)
 VIDEO_UPLOAD_IDEMPOTENCY_SCOPE = "videos.upload"
+VIDEO_FILTER_DATE_FORMAT = "%d/%m/%Y"
 
 
 def _fields_set(request: VideoUpdateRequest) -> set[str]:
@@ -162,6 +164,51 @@ def _normalize_optional_text(value: str | None) -> str:
         return ""
 
     return value.strip()
+
+
+def _parse_video_filter_date(value: str | None, field_name: str):
+    if value is None:
+        return None
+
+    text = value.strip()
+    if not text:
+        return None
+
+    try:
+        return datetime.strptime(text, VIDEO_FILTER_DATE_FORMAT).date()
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"{field_name} must use DD/MM/YYYY format",
+        )
+
+
+def _resolve_video_date_filters(
+    *,
+    created_date: str | None,
+    created_from: str | None,
+    created_to: str | None,
+):
+    exact_date = _parse_video_filter_date(created_date, "created_date")
+    from_date = _parse_video_filter_date(created_from, "created_from")
+    to_date = _parse_video_filter_date(created_to, "created_to")
+
+    if exact_date is not None and (from_date is not None or to_date is not None):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="created_date cannot be combined with created_from or created_to",
+        )
+
+    if exact_date is not None:
+        return exact_date, exact_date
+
+    if from_date is not None and to_date is not None and from_date > to_date:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="created_from cannot be after created_to",
+        )
+
+    return from_date, to_date
 
 
 def _ensure_file_exists(path) -> None:
@@ -451,6 +498,10 @@ def list_videos(
     category_ids: list[UUID] | None = Query(default=None),
     tag_ids: list[UUID] | None = Query(default=None),
     owner_id: UUID | None = Query(default=None),
+    created_date: str | None = Query(default=None, min_length=10, max_length=10),
+    created_from: str | None = Query(default=None, min_length=10, max_length=10),
+    created_to: str | None = Query(default=None, min_length=10, max_length=10),
+    edited: bool | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     current_user: User | None = Depends(get_optional_current_user),
@@ -458,12 +509,20 @@ def list_videos(
     react_to_video: ReactToVideo = Depends(get_react_to_video),
     video_repository: VideoRepository = Depends(get_video_repository),
 ) -> VideoListResponse:
+    resolved_created_from, resolved_created_to = _resolve_video_date_filters(
+        created_date=created_date,
+        created_from=created_from,
+        created_to=created_to,
+    )
     result = list_videos_use_case.execute(
         ListVideosQuery(
             title=title,
             category_ids=category_ids,
             tag_ids=tag_ids,
             owner_id=owner_id,
+            created_from=resolved_created_from,
+            created_to=resolved_created_to,
+            edited=edited,
             limit=limit,
             offset=offset,
         ),

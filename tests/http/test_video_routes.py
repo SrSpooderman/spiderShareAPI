@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 import pytest
 from uuid import uuid4
 
@@ -103,6 +105,93 @@ def test_list_videos_supports_pagination_filters_and_popularity_order(
 
 
 @pytest.mark.http
+def test_list_videos_filters_by_created_date_range_and_edited(
+    app,
+    client,
+    video_factory,
+    video_repository,
+) -> None:
+    matching = video_repository.add(
+        video_factory(
+            title="Edited clip",
+            edited=True,
+            created_at=datetime(2025, 5, 10, 12, 0, tzinfo=timezone.utc),
+        )
+    )
+    video_repository.add(
+        video_factory(
+            title="Raw clip",
+            edited=False,
+            created_at=datetime(2025, 5, 10, 12, 0, tzinfo=timezone.utc),
+        )
+    )
+    video_repository.add(
+        video_factory(
+            title="Old edited clip",
+            edited=True,
+            created_at=datetime(2024, 12, 31, 12, 0, tzinfo=timezone.utc),
+        )
+    )
+    app.dependency_overrides[get_video_repository] = lambda: video_repository
+    app.dependency_overrides[get_optional_current_user] = lambda: None
+
+    response = client.get(
+        "/videos",
+        params={
+            "created_from": "01/04/2025",
+            "created_to": "30/06/2026",
+            "edited": "true",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert [item["id"] for item in body["items"]] == [str(matching.id)]
+
+
+@pytest.mark.http
+def test_list_videos_filters_by_exact_created_date(
+    app,
+    client,
+    video_factory,
+    video_repository,
+) -> None:
+    matching = video_repository.add(
+        video_factory(created_at=datetime(2026, 6, 30, 23, 59, tzinfo=timezone.utc))
+    )
+    video_repository.add(
+        video_factory(created_at=datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc))
+    )
+    app.dependency_overrides[get_video_repository] = lambda: video_repository
+    app.dependency_overrides[get_optional_current_user] = lambda: None
+
+    response = client.get("/videos", params={"created_date": "30/06/2026"})
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    assert response.json()["items"][0]["id"] == str(matching.id)
+
+
+@pytest.mark.http
+def test_list_videos_rejects_invalid_date_filters(
+    client,
+) -> None:
+    response = client.get("/videos", params={"created_from": "2026-06-30"})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "created_from must use DD/MM/YYYY format"
+
+    response = client.get(
+        "/videos",
+        params={"created_from": "30/06/2026", "created_to": "01/04/2025"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "created_from cannot be after created_to"
+
+
+@pytest.mark.http
 def test_upload_video_creates_video_and_stores_original(
     app,
     client,
@@ -201,6 +290,12 @@ def test_list_and_create_custom_video_categories(
     assert response.status_code == 200
     assert response.json()[0]["name"] == "Existing"
     assert response.json()[0]["source"] == "custom"
+
+    video_category_repository.add(make_video_category(name="Puzzle"))
+    response = client.get("/category", params={"name": "exis"})
+
+    assert response.status_code == 200
+    assert [category["name"] for category in response.json()] == ["Existing"]
 
     response = client.post(
         "/category",

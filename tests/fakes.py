@@ -234,6 +234,20 @@ class FakeVideoRepository:
             ]
         if filters.owner_id is not None:
             videos = [video for video in videos if video.owner_id == filters.owner_id]
+        if filters.created_from is not None:
+            videos = [
+                video
+                for video in videos
+                if video.created_at.date() >= filters.created_from
+            ]
+        if filters.created_to is not None:
+            videos = [
+                video
+                for video in videos
+                if video.created_at.date() <= filters.created_to
+            ]
+        if filters.edited is not None:
+            videos = [video for video in videos if video.edited is filters.edited]
         if filters.category_ids:
             category_ids = set(filters.category_ids)
             videos = [
@@ -545,6 +559,17 @@ class FakeVideoCategoryRepository:
 
     def list(self) -> list[VideoCategory]:
         return sorted(self.categories.values(), key=lambda category: category.name)
+
+    def search(self, *, name: str | None = None) -> list[VideoCategory]:
+        name_filter = name.lower() if name is not None else None
+        categories = self.categories.values()
+        if name_filter is not None:
+            categories = [
+                category
+                for category in categories
+                if name_filter in category.name.lower()
+            ]
+        return sorted(categories, key=lambda category: category.name)
 
     def get_by_id(self, category_id: UUID) -> VideoCategory | None:
         return self.categories.get(category_id)

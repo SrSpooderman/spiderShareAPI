@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import BinaryIO
 from uuid import UUID
@@ -25,6 +26,9 @@ class VideoListFilters:
     category_ids: list[UUID] | None = None
     tag_ids: list[UUID] | None = None
     owner_id: UUID | None = None
+    created_from: date | None = None
+    created_to: date | None = None
+    edited: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -155,6 +159,10 @@ class VideoRepository(ABC):
 class VideoCategoryRepository(ABC):
     @abstractmethod
     def list(self) -> list[VideoCategory]:
+        pass
+
+    @abstractmethod
+    def search(self, *, name: str | None = None) -> list[VideoCategory]:
         pass
 
     @abstractmethod

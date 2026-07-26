@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, time, timedelta
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -53,6 +54,15 @@ class SqlAlchemyVideoCategoryRepository(VideoCategoryRepository):
             select(VideoCategoryModel).order_by(VideoCategoryModel.name.asc())
         ).all()
 
+        return [video_category_model_to_domain(model) for model in models]
+
+    def search(self, *, name: str | None = None) -> list[VideoCategory]:
+        statement = select(VideoCategoryModel)
+        if name:
+            statement = statement.where(VideoCategoryModel.name.ilike(f"%{name}%"))
+        statement = statement.order_by(VideoCategoryModel.name.asc())
+
+        models = self.session.scalars(statement).all()
         return [video_category_model_to_domain(model) for model in models]
 
     def get_by_id(self, category_id: UUID) -> VideoCategory | None:
@@ -613,6 +623,18 @@ class SqlAlchemyVideoRepository(VideoRepository):
             conditions.append(VideoModel.title.ilike(f"%{filters.title}%"))
         if filters.owner_id is not None:
             conditions.append(VideoModel.owner_id == str(filters.owner_id))
+        if filters.created_from is not None:
+            conditions.append(
+                VideoModel.created_at
+                >= datetime.combine(filters.created_from, time.min)
+            )
+        if filters.created_to is not None:
+            conditions.append(
+                VideoModel.created_at
+                < datetime.combine(filters.created_to + timedelta(days=1), time.min)
+            )
+        if filters.edited is not None:
+            conditions.append(VideoModel.edited.is_(filters.edited))
         if filters.category_ids:
             conditions.append(
                 VideoModel.category_assignments.any(

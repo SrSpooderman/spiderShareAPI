@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import date
 from uuid import UUID
 
 from app.modules.users.domain.user import User
@@ -15,6 +16,9 @@ class ListVideosQuery:
     category_ids: list[UUID] | None = None
     tag_ids: list[UUID] | None = None
     owner_id: UUID | None = None
+    created_from: date | None = None
+    created_to: date | None = None
+    edited: bool | None = None
     limit: int = 20
     offset: int = 0
 
@@ -35,6 +39,9 @@ class ListVideos:
                 category_ids=query.category_ids,
                 tag_ids=query.tag_ids,
                 owner_id=query.owner_id,
+                created_from=query.created_from,
+                created_to=query.created_to,
+                edited=query.edited,
             ),
             limit=query.limit,
             offset=query.offset,

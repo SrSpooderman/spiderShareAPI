@@ -78,9 +78,19 @@ def _grid_response(grid: dict) -> SteamGridDbGridResponse | None:
 
 @router.get("", response_model=list[VideoCategoryResponse])
 def list_video_categories(
+    name: str | None = Query(default=None, min_length=1, max_length=100),
     repository: VideoCategoryRepository = Depends(get_video_category_repository),
 ) -> list[VideoCategoryResponse]:
-    return [VideoCategoryResponse.from_domain(category) for category in repository.list()]
+    name_filter = name.strip() if name is not None else None
+    if name_filter == "":
+        name_filter = None
+
+    categories = (
+        repository.search(name=name_filter)
+        if name_filter is not None
+        else repository.list()
+    )
+    return [VideoCategoryResponse.from_domain(category) for category in categories]
 
 
 @router.post("", response_model=VideoCategoryResponse, status_code=status.HTTP_201_CREATED)
