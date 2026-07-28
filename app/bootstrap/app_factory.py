@@ -80,6 +80,7 @@ def create_app() -> FastAPI:
         title="SpiderShare",
         version=settings.app_version,
         description="API for cliponomicon videos and clips.",
+        root_path=settings.app_root_path,
         contact={
             "name": "SrSpooderman",
             "url": "https://github.com/SrSpooderman",

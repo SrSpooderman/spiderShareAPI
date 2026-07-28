@@ -198,6 +198,7 @@ Antes de levantarlo en produccion:
 API_DOMAIN=api.tudominio.com
 BACKOFFICE_DOMAIN=admin.tudominio.com
 LETSENCRYPT_EMAIL=admin@tudominio.com
+APP_ROOT_PATH=/api
 BACKOFFICE_PROXY_API_BASE_URL=/api
 NGINX_HTTP_PORT=80
 NGINX_HTTPS_PORT=443
@@ -256,6 +257,7 @@ Variables principales:
 | --- | --- |
 | `APP_NAME` | Nombre de la aplicacion. |
 | `APP_VERSION` | Version devuelta por `/version`. |
+| `APP_ROOT_PATH` | Prefijo publico si la API se sirve bajo una subruta, por ejemplo `/api`. Vacio por defecto. |
 | `APP_ENV` | Entorno logico. `local`, `dev` o `development` activan logging DEBUG. |
 | `APP_DEBUG` | Flag de debug. |
 | `LOG_FORMAT` | `pretty` para desarrollo legible o `json` para logs estructurados. |
@@ -314,6 +316,7 @@ Ejemplo minimo:
 ```env
 APP_NAME=SpiderShare
 APP_VERSION=1.0.0
+APP_ROOT_PATH=
 APP_ENV=local
 APP_DEBUG=true
 LOG_FORMAT=pretty

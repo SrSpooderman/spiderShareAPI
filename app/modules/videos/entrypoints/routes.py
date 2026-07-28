@@ -112,8 +112,12 @@ def _map_video_error(error: Exception) -> HTTPException:
 def _map_video_upload_error(error: VideoUploadError) -> HTTPException:
     if isinstance(error, VideoFileTooLargeError):
         return HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="Video file is too large",
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail={
+                "message": "Video file is too large",
+                "size_bytes": error.size_bytes,
+                "limit_bytes": error.limit_bytes,
+            },
         )
     if isinstance(error, VideoDurationTooLongError):
         return HTTPException(

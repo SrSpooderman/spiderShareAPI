@@ -7,6 +7,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "SpiderShare"
     app_version: str = "1.2.0"
+    app_root_path: str = ""
     app_env: str = "local"
     app_debug: bool = True
     log_level: str | None = None
@@ -66,6 +67,14 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [domain.strip() for domain in value.split(",") if domain.strip()]
         return value
+
+    @field_validator("app_root_path")
+    @classmethod
+    def normalize_app_root_path(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized or normalized == "/":
+            return ""
+        return normalized if normalized.startswith("/") else f"/{normalized}"
 
     @field_validator("log_format")
     @classmethod

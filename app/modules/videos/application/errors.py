@@ -1,3 +1,6 @@
+from dataclasses import dataclass
+
+
 class VideoNotFoundError(Exception):
     pass
 
@@ -18,8 +21,10 @@ class VideoFileEmptyError(VideoUploadError):
     pass
 
 
+@dataclass
 class VideoFileTooLargeError(VideoUploadError):
-    pass
+    size_bytes: int | None = None
+    limit_bytes: int | None = None
 
 
 class VideoDurationTooLongError(VideoUploadError):

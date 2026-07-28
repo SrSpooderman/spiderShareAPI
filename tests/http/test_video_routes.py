@@ -4,6 +4,7 @@ import pytest
 from uuid import uuid4
 
 from app.modules.auth.wiring import get_current_user, get_optional_current_user
+from app.modules.videos.application.errors import VideoFileTooLargeError
 from app.modules.videos.wiring import (
     get_video_category_repository,
     get_video_processing_queue,
@@ -15,6 +16,7 @@ from app.modules.steam.wiring import get_steamgriddb_client
 from app.modules.videos.domain.video import VideoProcessingStatus, VideoVariantType
 from tests.factories import make_video_category, make_video_tag, make_video_variant
 from tests.fakes import FakeSteamGridDbClient
+from tests.fakes import FakeVideoStorage
 
 
 @pytest.mark.http
@@ -269,6 +271,34 @@ def test_upload_video_allows_missing_description(
     assert response.status_code == 201
     assert response.json()["description"] == ""
     assert video_processing_queue.enqueued == [video_repository.created[0].id]
+
+
+@pytest.mark.http
+def test_upload_video_file_too_large_detail_includes_size_and_limit(
+    app,
+    client,
+    user_factory,
+    video_repository,
+) -> None:
+    user = user_factory()
+    app.dependency_overrides[get_video_repository] = lambda: video_repository
+    app.dependency_overrides[get_video_storage] = lambda: FakeVideoStorage(
+        VideoFileTooLargeError(size_bytes=12, limit_bytes=10)
+    )
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    response = client.post(
+        "/videos",
+        data={"title": "Boss clip"},
+        files={"file": ("clip.mp4", b"video-bytes!!", "video/mp4")},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == {
+        "message": "Video file is too large",
+        "size_bytes": 12,
+        "limit_bytes": 10,
+    }
 
 
 @pytest.mark.http
