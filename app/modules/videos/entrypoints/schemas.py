@@ -400,6 +400,7 @@ class VideoUpdateRequest(BaseModel):
     edited: bool | None = None
     category_ids: list[UUID] | None = None
     tag_ids: list[UUID] | None = None
+    source_created_at: datetime | None = None
     source_updated_at: datetime | None = None
 
     @field_validator("title", "description", mode="before")

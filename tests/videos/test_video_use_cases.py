@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from io import BytesIO
 from uuid import uuid4
 
@@ -19,17 +20,27 @@ from tests.fakes import FakeVideoRepository
 
 
 @pytest.mark.unit
-def test_list_videos_applies_visibility_filters_and_popularity_order(
+def test_list_videos_applies_visibility_filters_and_created_at_desc_order(
     user_factory,
     video_factory,
     video_repository,
 ) -> None:
     owner = user_factory()
-    public_low = video_repository.add(
-        video_factory(owner_id=owner.id, title="Alpha", favorite_count=1)
+    older = video_repository.add(
+        video_factory(
+            owner_id=owner.id,
+            title="Alpha older",
+            favorite_count=5,
+            created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        )
     )
-    public_high = video_repository.add(
-        video_factory(owner_id=owner.id, title="Alpha boss", favorite_count=5)
+    newer = video_repository.add(
+        video_factory(
+            owner_id=owner.id,
+            title="Alpha newer",
+            favorite_count=1,
+            created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+        )
     )
     video_repository.add(
         video_factory(owner_id=owner.id, title="Alpha private", is_registered_only=True)
@@ -42,7 +53,7 @@ def test_list_videos_applies_visibility_filters_and_popularity_order(
     )
 
     assert result.total == 2
-    assert result.items == [public_high, public_low]
+    assert result.items == [newer, older]
 
 
 @pytest.mark.unit
@@ -225,7 +236,7 @@ def test_process_video_marks_video_ready_with_low_variant(
     assert processed.height == 1080
     assert processed.duration_seconds == 12.5
     assert processed.source_created_at == video.created_at
-    assert processed.source_updated_at == video.updated_at
+    assert processed.source_updated_at is None
     assert [variant.codec for variant in processed.variants] == ["h264"]
     assert video_transcoder.transcoded == [video.id]
 

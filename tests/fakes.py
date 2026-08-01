@@ -20,7 +20,6 @@ from app.modules.videos.domain.video import (
     VideoReaction,
     VideoTag,
     VideoTagCreate,
-    video_popularity_score,
 )
 from app.shared.infrastructure.providers.steam.steam_client import SteamApiError
 from tests.factories import (
@@ -263,11 +262,7 @@ class FakeVideoRepository:
                 if tag_ids & {tag.id for tag in video.tags}
             ]
 
-        videos = sorted(
-            videos,
-            key=lambda video: (video_popularity_score(video), video.created_at),
-            reverse=True,
-        )
+        videos = sorted(videos, key=lambda video: video.created_at, reverse=True)
 
         return VideoListResult(items=videos[offset : offset + limit], total=len(videos))
 
@@ -331,7 +326,7 @@ class FakeVideoRepository:
             aspect_ratio=result.aspect_ratio,
             duration_seconds=result.duration_seconds,
             source_created_at=result.source_created_at or video.created_at,
-            source_updated_at=result.source_updated_at or video.updated_at,
+            source_updated_at=result.source_updated_at,
             thumbnail_path=result.thumbnail_path,
             variants=variants,
             updated_at=now,
@@ -403,6 +398,8 @@ class FakeVideoRepository:
         edited: bool | None = None,
         category_ids: list[UUID] | None = None,
         tag_ids: list[UUID] | None = None,
+        source_created_at: datetime | None = None,
+        source_created_at_set: bool = False,
         source_updated_at: datetime | None = None,
         source_updated_at_set: bool = False,
     ) -> Video | None:
@@ -417,6 +414,8 @@ class FakeVideoRepository:
             "edited": edited,
             "category_ids": category_ids,
             "tag_ids": tag_ids,
+            "source_created_at": source_created_at,
+            "source_created_at_set": source_created_at_set,
             "source_updated_at": source_updated_at,
             "source_updated_at_set": source_updated_at_set,
         }
@@ -434,6 +433,9 @@ class FakeVideoRepository:
             ),
             edited=edited if edited is not None else video.edited,
             tags=self._tags_for_ids(tag_ids) if tag_ids is not None else video.tags,
+            source_created_at=(
+                source_created_at if source_created_at_set else video.source_created_at
+            ),
             source_updated_at=(
                 source_updated_at if source_updated_at_set else video.source_updated_at
             ),

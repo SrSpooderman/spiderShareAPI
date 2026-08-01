@@ -748,6 +748,12 @@ def update_video(
                     request.category_ids if "category_ids" in fields_set else None
                 ),
                 tag_ids=request.tag_ids if "tag_ids" in fields_set else None,
+                source_created_at=(
+                    request.source_created_at
+                    if "source_created_at" in fields_set
+                    else None
+                ),
+                source_created_at_set="source_created_at" in fields_set,
                 source_updated_at=(
                     request.source_updated_at
                     if "source_updated_at" in fields_set

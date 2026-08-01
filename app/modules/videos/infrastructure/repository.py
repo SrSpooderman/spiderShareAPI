@@ -256,10 +256,7 @@ class SqlAlchemyVideoRepository(VideoRepository):
                 selectinload(VideoModel.processing_errors),
                 selectinload(VideoModel.owner),
             )
-            .order_by(
-                self._popularity_score_expression().desc(),
-                VideoModel.created_at.desc(),
-            )
+            .order_by(VideoModel.created_at.desc())
             .limit(limit)
             .offset(offset)
         )
@@ -312,7 +309,7 @@ class SqlAlchemyVideoRepository(VideoRepository):
         model.aspect_ratio = result.aspect_ratio.value
         model.duration_seconds = result.duration_seconds
         model.source_created_at = result.source_created_at or model.created_at
-        model.source_updated_at = result.source_updated_at or model.updated_at
+        model.source_updated_at = result.source_updated_at
         model.thumbnail_path = result.thumbnail_path
         model.variants.clear()
         self.session.flush()
@@ -395,6 +392,8 @@ class SqlAlchemyVideoRepository(VideoRepository):
         edited: bool | None = None,
         category_ids: list[UUID] | None = None,
         tag_ids: list[UUID] | None = None,
+        source_created_at: datetime | None = None,
+        source_created_at_set: bool = False,
         source_updated_at: datetime | None = None,
         source_updated_at_set: bool = False,
     ) -> Video | None:
@@ -415,6 +414,8 @@ class SqlAlchemyVideoRepository(VideoRepository):
             self._replace_category_assignments(model, category_ids)
         if tag_ids is not None:
             self._replace_tag_assignments(model, tag_ids)
+        if source_created_at_set:
+            model.source_created_at = source_created_at
         if source_updated_at_set:
             model.source_updated_at = source_updated_at
 
@@ -659,10 +660,6 @@ class SqlAlchemyVideoRepository(VideoRepository):
             )
 
         return conditions
-
-    def _popularity_score_expression(self):
-        total_favorites = VideoModel.favorite_count
-        return VideoModel.favorite_count * 3 + total_favorites
 
     def _replace_category_assignments(
         self,

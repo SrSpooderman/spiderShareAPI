@@ -20,7 +20,7 @@ from tests.fakes import FakeVideoStorage
 
 
 @pytest.mark.http
-def test_list_videos_supports_pagination_filters_and_popularity_order(
+def test_list_videos_supports_pagination_filters_and_created_at_desc_order(
     app,
     client,
     user_factory,
@@ -30,26 +30,28 @@ def test_list_videos_supports_pagination_filters_and_popularity_order(
     owner = user_factory(username="owner", display_name="Owner")
     category = make_video_category(name="Speedrun")
     tag = make_video_tag(name="boss")
-    matching_high = video_repository.add(
+    matching_older = video_repository.add(
         video_factory(
             owner_id=owner.id,
             owner_username=owner.username,
             owner_display_name=owner.display_name,
-            title="Boss clip",
+            title="Boss clip older",
             favorite_count=8,
             categories=[category],
             tags=[tag],
+            created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
         )
     )
-    matching_low = video_repository.add(
+    matching_newer = video_repository.add(
         video_factory(
             owner_id=owner.id,
             owner_username=owner.username,
             owner_display_name=owner.display_name,
-            title="Boss clip low",
+            title="Boss clip newer",
             favorite_count=2,
             categories=[category],
             tags=[tag],
+            created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
         )
     )
     video_repository.add(video_factory(title="Other clip", favorite_count=99))
@@ -73,16 +75,16 @@ def test_list_videos_supports_pagination_filters_and_popularity_order(
     assert body["total"] == 2
     assert body["limit"] == 1
     assert body["offset"] == 0
-    assert [item["id"] for item in body["items"]] == [str(matching_high.id)]
-    assert body["items"][0]["popularity_score"] == matching_high.favorite_count * 4
+    assert [item["id"] for item in body["items"]] == [str(matching_newer.id)]
+    assert body["items"][0]["popularity_score"] == matching_newer.favorite_count * 4
     assert body["items"][0]["owner"] == {
         "id": str(owner.id),
         "username": "owner",
         "display_name": "Owner",
     }
-    assert body["items"][0]["original_filename"] == matching_high.original_filename
-    assert body["items"][0]["clip_url"] == f"/clip/{matching_high.id}"
-    assert body["items"][0]["download_url"] == f"/videos/{matching_high.id}/download"
+    assert body["items"][0]["original_filename"] == matching_newer.original_filename
+    assert body["items"][0]["clip_url"] == f"/clip/{matching_newer.id}"
+    assert body["items"][0]["download_url"] == f"/videos/{matching_newer.id}/download"
     assert body["items"][0]["is_owner"] is False
     assert body["items"][0]["can_edit"] is False
     assert body["items"][0]["can_delete"] is False
@@ -102,8 +104,8 @@ def test_list_videos_supports_pagination_filters_and_popularity_order(
     )
 
     assert response.status_code == 200
-    assert [item["id"] for item in response.json()["items"]] == [str(matching_low.id)]
-    assert response.json()["items"][0]["popularity_score"] == matching_low.favorite_count * 4
+    assert [item["id"] for item in response.json()["items"]] == [str(matching_older.id)]
+    assert response.json()["items"][0]["popularity_score"] == matching_older.favorite_count * 4
 
 
 @pytest.mark.http
@@ -1088,6 +1090,17 @@ def test_patch_video_updates_metadata_and_only_sets_edited_when_requested(
     body = response.json()
     assert body["edited"] is True
     assert body["edited_at"] is None
+
+    source_created_at = "2026-07-07T18:22:10Z"
+    response = client.patch(
+        f"/videos/{video.id}",
+        json={"source_created_at": source_created_at},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source_created_at"] == "2026-07-07T18:22:10Z"
+    assert video_repository.updated[-1][1]["source_created_at_set"] is True
 
     source_updated_at = "2026-07-08T09:15:20Z"
     response = client.patch(
