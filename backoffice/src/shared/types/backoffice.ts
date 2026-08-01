@@ -49,6 +49,8 @@ export type VideoSummary = {
   processingStatus: ProcessingStatus;
   visibility: "public" | "registered";
   durationSeconds: number | null;
+  sourceCreatedAt: string | null;
+  sourceUpdatedAt: string | null;
   createdAt: string;
   latestProcessingError: ProcessingError | null;
 };

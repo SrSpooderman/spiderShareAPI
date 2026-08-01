@@ -1089,6 +1089,17 @@ def test_patch_video_updates_metadata_and_only_sets_edited_when_requested(
     assert body["edited"] is True
     assert body["edited_at"] is None
 
+    source_updated_at = "2026-07-08T09:15:20Z"
+    response = client.patch(
+        f"/videos/{video.id}",
+        json={"source_updated_at": source_updated_at},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source_updated_at"] == "2026-07-08T09:15:20Z"
+    assert video_repository.updated[-1][1]["source_updated_at_set"] is True
+
 
 @pytest.mark.http
 def test_patch_video_replaces_tags_independently_from_categories(

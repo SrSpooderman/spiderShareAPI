@@ -24,6 +24,7 @@ class _SourceMetadata:
     video_codec: str
     duration_seconds: float
     source_created_at: datetime | None
+    source_updated_at: datetime | None
 
 
 @dataclass(frozen=True)
@@ -153,6 +154,7 @@ class FfmpegVideoTranscoder(VideoTranscoder):
             aspect_ratio=original_geometry.aspect_ratio,
             duration_seconds=source.duration_seconds,
             source_created_at=source.source_created_at,
+            source_updated_at=source.source_updated_at,
             thumbnail_path=self._relative_path(thumbnail_path),
             variants=variants,
         )
@@ -195,17 +197,38 @@ class FfmpegVideoTranscoder(VideoTranscoder):
             height=int(stream["height"]),
             duration_seconds=float(metadata["format"]["duration"]),
             source_created_at=self._source_created_at(metadata),
+            source_updated_at=self._source_updated_at(metadata),
         )
 
     def _is_av1(self, source: _SourceMetadata) -> bool:
         return source.video_codec == "av1"
 
     def _source_created_at(self, metadata: dict) -> datetime | None:
+        return self._first_metadata_datetime(
+            metadata,
+            ("creation_time", "date"),
+        )
+
+    def _source_updated_at(self, metadata: dict) -> datetime | None:
+        return self._first_metadata_datetime(
+            metadata,
+            ("modification_time", "modified_time", "date_modified"),
+        )
+
+    def _first_metadata_datetime(
+        self,
+        metadata: dict,
+        tag_names: tuple[str, ...],
+    ) -> datetime | None:
         candidates = [
-            metadata.get("format", {}).get("tags", {}).get("creation_time"),
             *[
-                stream.get("tags", {}).get("creation_time")
+                metadata.get("format", {}).get("tags", {}).get(tag_name)
+                for tag_name in tag_names
+            ],
+            *[
+                stream.get("tags", {}).get(tag_name)
                 for stream in metadata.get("streams", [])
+                for tag_name in tag_names
             ],
         ]
         for value in candidates:

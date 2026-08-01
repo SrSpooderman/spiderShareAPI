@@ -331,6 +331,7 @@ class FakeVideoRepository:
             aspect_ratio=result.aspect_ratio,
             duration_seconds=result.duration_seconds,
             source_created_at=result.source_created_at or video.created_at,
+            source_updated_at=result.source_updated_at or video.updated_at,
             thumbnail_path=result.thumbnail_path,
             variants=variants,
             updated_at=now,
@@ -385,6 +386,7 @@ class FakeVideoRepository:
             aspect_ratio=None,
             duration_seconds=None,
             source_created_at=None,
+            source_updated_at=None,
             thumbnail_path=None,
             variants=[],
         )
@@ -401,6 +403,8 @@ class FakeVideoRepository:
         edited: bool | None = None,
         category_ids: list[UUID] | None = None,
         tag_ids: list[UUID] | None = None,
+        source_updated_at: datetime | None = None,
+        source_updated_at_set: bool = False,
     ) -> Video | None:
         video = self.videos.get(video_id)
         if video is None:
@@ -413,6 +417,8 @@ class FakeVideoRepository:
             "edited": edited,
             "category_ids": category_ids,
             "tag_ids": tag_ids,
+            "source_updated_at": source_updated_at,
+            "source_updated_at_set": source_updated_at_set,
         }
         self.updated.append((video_id, changes))
 
@@ -428,6 +434,9 @@ class FakeVideoRepository:
             ),
             edited=edited if edited is not None else video.edited,
             tags=self._tags_for_ids(tag_ids) if tag_ids is not None else video.tags,
+            source_updated_at=(
+                source_updated_at if source_updated_at_set else video.source_updated_at
+            ),
             updated_at=now,
         )
         self.videos[video_id] = updated_video
@@ -792,6 +801,7 @@ class FakeVideoTranscoder:
             aspect_ratio=VideoAspectRatio.RATIO_16_9,
             duration_seconds=12.5,
             source_created_at=None,
+            source_updated_at=None,
             thumbnail_path=f"thumbnails/{video_id}/thumbnail.jpg",
             variants=[
                 VideoVariantCreate(

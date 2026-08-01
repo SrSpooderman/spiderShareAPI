@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import BinaryIO
 from uuid import UUID
@@ -96,6 +96,8 @@ class VideoRepository(ABC):
         edited: bool | None = None,
         category_ids: list[UUID] | None = None,
         tag_ids: list[UUID] | None = None,
+        source_updated_at: datetime | None = None,
+        source_updated_at_set: bool = False,
     ) -> Video | None:
         pass
 

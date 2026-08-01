@@ -53,6 +53,7 @@ class VideoModel(Base):
     aspect_ratio: Mapped[str | None] = mapped_column(String(8), nullable=True)
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     source_created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    source_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     thumbnail_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     favorite_count: Mapped[int] = mapped_column(
         Integer,

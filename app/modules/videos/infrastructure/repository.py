@@ -312,6 +312,7 @@ class SqlAlchemyVideoRepository(VideoRepository):
         model.aspect_ratio = result.aspect_ratio.value
         model.duration_seconds = result.duration_seconds
         model.source_created_at = result.source_created_at or model.created_at
+        model.source_updated_at = result.source_updated_at or model.updated_at
         model.thumbnail_path = result.thumbnail_path
         model.variants.clear()
         self.session.flush()
@@ -376,6 +377,7 @@ class SqlAlchemyVideoRepository(VideoRepository):
         model.aspect_ratio = None
         model.duration_seconds = None
         model.source_created_at = None
+        model.source_updated_at = None
         model.thumbnail_path = None
         model.variants.clear()
         self.session.commit()
@@ -393,6 +395,8 @@ class SqlAlchemyVideoRepository(VideoRepository):
         edited: bool | None = None,
         category_ids: list[UUID] | None = None,
         tag_ids: list[UUID] | None = None,
+        source_updated_at: datetime | None = None,
+        source_updated_at_set: bool = False,
     ) -> Video | None:
         model = self._get_model(video_id)
 
@@ -411,6 +415,8 @@ class SqlAlchemyVideoRepository(VideoRepository):
             self._replace_category_assignments(model, category_ids)
         if tag_ids is not None:
             self._replace_tag_assignments(model, tag_ids)
+        if source_updated_at_set:
+            model.source_updated_at = source_updated_at
 
         self.session.commit()
         model = self._get_model(video_id)

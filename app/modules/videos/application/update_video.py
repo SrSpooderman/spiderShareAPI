@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 from app.modules.users.domain.user import User
@@ -16,6 +17,8 @@ class UpdateVideoCommand:
     edited: bool | None = None
     category_ids: list[UUID] | None = None
     tag_ids: list[UUID] | None = None
+    source_updated_at: datetime | None = None
+    source_updated_at_set: bool = False
 
 
 class UpdateVideo:
@@ -39,6 +42,8 @@ class UpdateVideo:
             edited=command.edited,
             category_ids=command.category_ids,
             tag_ids=command.tag_ids,
+            source_updated_at=command.source_updated_at,
+            source_updated_at_set=command.source_updated_at_set,
         )
 
         if updated_video is None:
