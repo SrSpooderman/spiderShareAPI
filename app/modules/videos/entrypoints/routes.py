@@ -230,6 +230,8 @@ async def _video_upload_request_hash(
     description: str,
     is_registered_only: bool,
     edited: bool,
+    source_created_at: datetime | None,
+    source_updated_at: datetime | None,
     category_ids: list[UUID],
     tag_ids: list[UUID],
 ) -> str:
@@ -239,6 +241,12 @@ async def _video_upload_request_hash(
         "description": description,
         "is_registered_only": is_registered_only,
         "edited": edited,
+        "source_created_at": (
+            source_created_at.isoformat() if source_created_at is not None else None
+        ),
+        "source_updated_at": (
+            source_updated_at.isoformat() if source_updated_at is not None else None
+        ),
         "category_ids": sorted(str(category_id) for category_id in category_ids),
         "tag_ids": sorted(str(tag_id) for tag_id in tag_ids),
         "filename": file.filename or "video",
@@ -344,6 +352,8 @@ async def upload_video(
     description: str | None = Form(default=None, max_length=5000),
     is_registered_only: bool = Form(default=False),
     edited: bool = Form(default=False),
+    source_created_at: datetime | None = Form(default=None),
+    source_updated_at: datetime | None = Form(default=None),
     category_ids: list[UUID] = Form(default=[]),
     tag_ids: list[UUID] = Form(default=[]),
     current_user: User = Depends(get_current_user),
@@ -366,6 +376,8 @@ async def upload_video(
         description=normalized_description,
         is_registered_only=is_registered_only,
         edited=edited,
+        source_created_at=source_created_at,
+        source_updated_at=source_updated_at,
         category_ids=category_ids,
         tag_ids=normalized_tag_ids,
     )
@@ -392,6 +404,8 @@ async def upload_video(
                 file=file.file,
                 is_registered_only=is_registered_only,
                 edited=edited,
+                source_created_at=source_created_at,
+                source_updated_at=source_updated_at,
                 category_ids=category_ids,
                 tag_ids=normalized_tag_ids,
             )

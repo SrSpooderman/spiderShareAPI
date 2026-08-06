@@ -160,6 +160,8 @@ class VideoCreate:
     id: UUID | None = None
     is_registered_only: bool = False
     edited: bool = False
+    source_created_at: datetime | None = None
+    source_updated_at: datetime | None = None
     category_ids: list[UUID] = field(default_factory=list)
     tag_ids: list[UUID] = field(default_factory=list)
 

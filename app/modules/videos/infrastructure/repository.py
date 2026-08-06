@@ -308,8 +308,10 @@ class SqlAlchemyVideoRepository(VideoRepository):
         model.height = result.height
         model.aspect_ratio = result.aspect_ratio.value
         model.duration_seconds = result.duration_seconds
-        model.source_created_at = result.source_created_at or model.created_at
-        model.source_updated_at = result.source_updated_at
+        model.source_created_at = (
+            model.source_created_at or result.source_created_at or model.created_at
+        )
+        model.source_updated_at = model.source_updated_at or result.source_updated_at
         model.thumbnail_path = result.thumbnail_path
         model.variants.clear()
         self.session.flush()

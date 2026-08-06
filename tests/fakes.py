@@ -278,6 +278,8 @@ class FakeVideoRepository:
                 original_filename=video.original_filename,
                 is_registered_only=video.is_registered_only,
                 edited=video.edited,
+                source_created_at=video.source_created_at,
+                source_updated_at=video.source_updated_at,
                 tags=self._tags_for_ids(video.tag_ids),
             )
         )
@@ -325,8 +327,10 @@ class FakeVideoRepository:
             height=result.height,
             aspect_ratio=result.aspect_ratio,
             duration_seconds=result.duration_seconds,
-            source_created_at=result.source_created_at or video.created_at,
-            source_updated_at=result.source_updated_at,
+            source_created_at=(
+                video.source_created_at or result.source_created_at or video.created_at
+            ),
+            source_updated_at=video.source_updated_at or result.source_updated_at,
             thumbnail_path=result.thumbnail_path,
             variants=variants,
             updated_at=now,

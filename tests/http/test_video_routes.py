@@ -216,6 +216,8 @@ def test_upload_video_creates_video_and_stores_original(
             "title": "Boss clip",
             "description": "Context",
             "edited": "true",
+            "source_created_at": "2026-07-07T18:22:10Z",
+            "source_updated_at": "2026-07-08T09:15:20Z",
             "tag_ids": [str(make_video_tag().id), str(make_video_tag().id)],
         },
         files={"file": ("clip.mp4", b"video-bytes", "video/mp4")},
@@ -237,6 +239,8 @@ def test_upload_video_creates_video_and_stores_original(
     assert body["width"] is None
     assert body["height"] is None
     assert body["duration_seconds"] is None
+    assert body["source_created_at"] == "2026-07-07T18:22:10Z"
+    assert body["source_updated_at"] == "2026-07-08T09:15:20Z"
     assert body["thumbnail_path"] is None
     assert body["playback_url"] is None
     assert body["clip_url"] == f"/clip/{body['id']}"
@@ -244,6 +248,12 @@ def test_upload_video_creates_video_and_stores_original(
     assert body["thumbnail_url"] is None
     assert body["variants"] == []
     assert video_repository.created[0].id == video_storage.saved[0]["video_id"]
+    assert video_repository.created[0].source_created_at == datetime(
+        2026, 7, 7, 18, 22, 10, tzinfo=timezone.utc
+    )
+    assert video_repository.created[0].source_updated_at == datetime(
+        2026, 7, 8, 9, 15, 20, tzinfo=timezone.utc
+    )
     assert video_storage.saved[0]["content"] == b"video-bytes"
     assert video_processing_queue.enqueued == [video_repository.created[0].id]
     assert video_transcoder.transcoded == []
