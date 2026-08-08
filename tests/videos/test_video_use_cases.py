@@ -243,7 +243,7 @@ def test_process_video_marks_video_ready_with_low_variant(
     assert processed.width == 1920
     assert processed.height == 1080
     assert processed.duration_seconds == 12.5
-    assert processed.source_created_at == video.created_at
+    assert processed.source_created_at is None
     assert processed.source_updated_at is None
     assert [variant.codec for variant in processed.variants] == ["h264"]
     assert video_transcoder.transcoded == [video.id]

@@ -327,9 +327,7 @@ class FakeVideoRepository:
             height=result.height,
             aspect_ratio=result.aspect_ratio,
             duration_seconds=result.duration_seconds,
-            source_created_at=(
-                video.source_created_at or result.source_created_at or video.created_at
-            ),
+            source_created_at=video.source_created_at or result.source_created_at,
             source_updated_at=video.source_updated_at or result.source_updated_at,
             thumbnail_path=result.thumbnail_path,
             variants=variants,
