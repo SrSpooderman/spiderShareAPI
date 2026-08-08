@@ -98,8 +98,6 @@ class VideoRepository(ABC):
         tag_ids: list[UUID] | None = None,
         source_created_at: datetime | None = None,
         source_created_at_set: bool = False,
-        source_updated_at: datetime | None = None,
-        source_updated_at_set: bool = False,
     ) -> Video | None:
         pass
 

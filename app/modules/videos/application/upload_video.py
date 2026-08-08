@@ -18,7 +18,6 @@ class UploadVideoCommand:
     is_registered_only: bool = False
     edited: bool = False
     source_created_at: datetime | None = None
-    source_updated_at: datetime | None = None
     category_ids: list[UUID] = field(default_factory=list)
     tag_ids: list[UUID] = field(default_factory=list)
 
@@ -52,7 +51,6 @@ class UploadVideo:
                     is_registered_only=command.is_registered_only,
                     edited=command.edited,
                     source_created_at=command.source_created_at,
-                    source_updated_at=command.source_updated_at,
                     category_ids=command.category_ids,
                     tag_ids=command.tag_ids,
                 )

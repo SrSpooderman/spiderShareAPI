@@ -218,7 +218,6 @@ class VideoDetailResponse(VideoSummaryResponse):
     height: int | None
     duration_seconds: float | None
     source_created_at: datetime | None
-    source_updated_at: datetime | None
     thumbnail_path: str | None
     variants: list[VideoVariantResponse]
     is_owner: bool
@@ -257,7 +256,6 @@ class VideoDetailResponse(VideoSummaryResponse):
             height=video.height,
             duration_seconds=video.duration_seconds,
             source_created_at=video.source_created_at,
-            source_updated_at=video.source_updated_at,
             thumbnail_path=video.thumbnail_path,
             variants=[
                 VideoVariantResponse.from_domain(variant)
@@ -401,7 +399,6 @@ class VideoUpdateRequest(BaseModel):
     category_ids: list[UUID] | None = None
     tag_ids: list[UUID] | None = None
     source_created_at: datetime | None = None
-    source_updated_at: datetime | None = None
 
     @field_validator("title", "description", mode="before")
     @classmethod

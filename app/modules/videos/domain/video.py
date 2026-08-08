@@ -146,7 +146,6 @@ class VideoProcessingResult:
     aspect_ratio: VideoAspectRatio
     duration_seconds: float
     source_created_at: datetime | None
-    source_updated_at: datetime | None
     thumbnail_path: str
     variants: list[VideoVariantCreate]
 
@@ -161,7 +160,6 @@ class VideoCreate:
     is_registered_only: bool = False
     edited: bool = False
     source_created_at: datetime | None = None
-    source_updated_at: datetime | None = None
     category_ids: list[UUID] = field(default_factory=list)
     tag_ids: list[UUID] = field(default_factory=list)
 
@@ -183,7 +181,6 @@ class Video:
     aspect_ratio: VideoAspectRatio | None
     duration_seconds: float | None
     source_created_at: datetime | None
-    source_updated_at: datetime | None
     thumbnail_path: str | None
     variants: list[VideoVariant]
     latest_processing_error: VideoProcessingError | None

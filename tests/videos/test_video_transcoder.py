@@ -63,7 +63,6 @@ def test_transcoder_generates_only_low_h264_variant(tmp_path, monkeypatch) -> No
             video_codec="h264",
             duration_seconds=60.0,
             source_created_at=None,
-            source_updated_at=None,
         )
 
     def fake_run_ffmpeg(command: list[str]) -> None:
@@ -101,7 +100,6 @@ def test_transcoder_generates_original_h264_variant_for_av1_source(tmp_path, mon
             video_codec="av1",
             duration_seconds=60.0,
             source_created_at=None,
-            source_updated_at=None,
         )
 
     def fake_run_ffmpeg(command: list[str]) -> None:
@@ -156,28 +154,3 @@ def test_transcoder_reads_source_creation_time_from_format_metadata() -> None:
         tzinfo=timezone.utc,
     )
 
-
-@pytest.mark.unit
-def test_transcoder_reads_source_updated_time_from_format_metadata() -> None:
-    transcoder = FfmpegVideoTranscoder(root_path="/tmp/videos")
-
-    source_updated_at = transcoder._source_updated_at(
-        {
-            "format": {
-                "tags": {
-                    "modification_time": "2026-07-08T09:15:20.000000Z",
-                },
-            },
-            "streams": [],
-        }
-    )
-
-    assert source_updated_at == datetime(
-        2026,
-        7,
-        8,
-        9,
-        15,
-        20,
-        tzinfo=timezone.utc,
-    )

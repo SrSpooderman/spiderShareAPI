@@ -199,7 +199,6 @@ def test_upload_video_saves_file_and_creates_video(user_factory, video_storage) 
     video_repository = FakeVideoRepository()
     upload_video = UploadVideo(video_repository, video_storage)
     source_created_at = datetime(2026, 7, 7, 18, 22, 10, tzinfo=timezone.utc)
-    source_updated_at = datetime(2026, 7, 8, 9, 15, 20, tzinfo=timezone.utc)
 
     video = upload_video.execute(
         UploadVideoCommand(
@@ -211,7 +210,6 @@ def test_upload_video_saves_file_and_creates_video(user_factory, video_storage) 
             file=BytesIO(b"video-bytes"),
             edited=True,
             source_created_at=source_created_at,
-            source_updated_at=source_updated_at,
             tag_ids=[uuid4()],
         )
     )
@@ -220,10 +218,8 @@ def test_upload_video_saves_file_and_creates_video(user_factory, video_storage) 
     assert video.original_filename == "clip.mp4"
     assert video.edited is True
     assert video.source_created_at == source_created_at
-    assert video.source_updated_at == source_updated_at
     assert video_repository.created[0].id == video.id
     assert video_repository.created[0].source_created_at == source_created_at
-    assert video_repository.created[0].source_updated_at == source_updated_at
     assert video_storage.saved[0]["video_id"] == video.id
     assert video_storage.saved[0]["content"] == b"video-bytes"
 
@@ -244,23 +240,20 @@ def test_process_video_marks_video_ready_with_low_variant(
     assert processed.height == 1080
     assert processed.duration_seconds == 12.5
     assert processed.source_created_at is None
-    assert processed.source_updated_at is None
     assert [variant.codec for variant in processed.variants] == ["h264"]
     assert video_transcoder.transcoded == [video.id]
 
 
 @pytest.mark.unit
-def test_process_video_preserves_existing_source_dates(
+def test_process_video_preserves_existing_source_created_at(
     video_factory,
     video_transcoder,
 ) -> None:
     source_created_at = datetime(2026, 7, 7, 18, 22, 10, tzinfo=timezone.utc)
-    source_updated_at = datetime(2026, 7, 8, 9, 15, 20, tzinfo=timezone.utc)
     video_repository = FakeVideoRepository()
     video = video_repository.add(
         video_factory(
             source_created_at=source_created_at,
-            source_updated_at=source_updated_at,
         )
     )
     process_video = ProcessVideo(video_repository, video_transcoder)
@@ -268,7 +261,6 @@ def test_process_video_preserves_existing_source_dates(
     processed = process_video.execute(video.id)
 
     assert processed.source_created_at == source_created_at
-    assert processed.source_updated_at == source_updated_at
 
 
 @pytest.mark.unit

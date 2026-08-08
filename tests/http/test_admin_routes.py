@@ -41,7 +41,6 @@ class FakeAdminReadModel:
             visibility="public",
             duration_seconds=None,
             source_created_at=None,
-            source_updated_at=None,
             created_at=datetime(2026, 6, 11, tzinfo=timezone.utc),
             latest_processing_error=None,
         )

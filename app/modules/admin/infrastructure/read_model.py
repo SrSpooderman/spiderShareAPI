@@ -425,7 +425,6 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
             visibility="registered" if model.is_registered_only else "public",
             duration_seconds=model.duration_seconds,
             source_created_at=model.source_created_at,
-            source_updated_at=model.source_updated_at,
             created_at=model.created_at,
             latest_processing_error=(
                 AdminProcessingErrorResponse(

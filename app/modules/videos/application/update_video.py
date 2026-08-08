@@ -19,8 +19,6 @@ class UpdateVideoCommand:
     tag_ids: list[UUID] | None = None
     source_created_at: datetime | None = None
     source_created_at_set: bool = False
-    source_updated_at: datetime | None = None
-    source_updated_at_set: bool = False
 
 
 class UpdateVideo:
@@ -46,8 +44,6 @@ class UpdateVideo:
             tag_ids=command.tag_ids,
             source_created_at=command.source_created_at,
             source_created_at_set=command.source_created_at_set,
-            source_updated_at=command.source_updated_at,
-            source_updated_at_set=command.source_updated_at_set,
         )
 
         if updated_video is None:
