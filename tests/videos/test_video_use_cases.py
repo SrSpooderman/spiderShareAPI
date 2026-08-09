@@ -16,6 +16,7 @@ from app.modules.videos.application.process_video import ProcessVideo
 from app.modules.videos.application.react_to_video import ReactToVideo
 from app.modules.videos.application.upload_video import UploadVideo, UploadVideoCommand
 from app.modules.videos.application.update_video import UpdateVideo, UpdateVideoCommand
+from app.modules.videos.domain.video import VideoProcessingResult
 from tests.fakes import FakeVideoRepository
 
 
@@ -261,6 +262,37 @@ def test_process_video_preserves_existing_source_created_at(
     processed = process_video.execute(video.id)
 
     assert processed.source_created_at == source_created_at
+
+
+@pytest.mark.unit
+def test_process_video_prefers_metadata_source_created_at(
+    video_factory,
+    video_transcoder,
+) -> None:
+    user_source_created_at = datetime(2026, 7, 7, 18, 22, 10, tzinfo=timezone.utc)
+    metadata_source_created_at = datetime(2026, 8, 8, 10, 12, 30, tzinfo=timezone.utc)
+    video_repository = FakeVideoRepository()
+    video = video_repository.add(
+        video_factory(
+            source_created_at=user_source_created_at,
+        )
+    )
+    default_result = video_transcoder.transcode(video.id)
+    video_transcoder.transcoded.clear()
+    video_transcoder.result = VideoProcessingResult(
+        width=default_result.width,
+        height=default_result.height,
+        aspect_ratio=default_result.aspect_ratio,
+        duration_seconds=default_result.duration_seconds,
+        source_created_at=metadata_source_created_at,
+        thumbnail_path=default_result.thumbnail_path,
+        variants=default_result.variants,
+    )
+    process_video = ProcessVideo(video_repository, video_transcoder)
+
+    processed = process_video.execute(video.id)
+
+    assert processed.source_created_at == metadata_source_created_at
 
 
 @pytest.mark.unit
