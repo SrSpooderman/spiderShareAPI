@@ -41,6 +41,10 @@ from app.modules.videos.application.react_to_video import ReactToVideo
 from app.modules.videos.application.upload_video import UploadVideo, UploadVideoCommand
 from app.modules.videos.application.update_video import UpdateVideo, UpdateVideoCommand
 from app.modules.videos.domain.ports import (
+    VIDEO_LIST_DEFAULT_SORT_BY,
+    VIDEO_LIST_DEFAULT_SORT_DIRECTION,
+    VIDEO_LIST_SORT_DIRECTIONS,
+    VIDEO_LIST_SORT_FIELDS,
     VideoProcessingQueue,
     VideoRepository,
     VideoStorage,
@@ -213,6 +217,23 @@ def _resolve_video_date_filters(
         )
 
     return from_date, to_date
+
+
+def _resolve_video_sort(sort_by: str, sort_direction: str) -> tuple[str, str]:
+    normalized_sort_by = sort_by.strip()
+    normalized_sort_direction = sort_direction.strip().lower()
+    if normalized_sort_by not in VIDEO_LIST_SORT_FIELDS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"sort_by must be one of: {', '.join(VIDEO_LIST_SORT_FIELDS)}",
+        )
+    if normalized_sort_direction not in VIDEO_LIST_SORT_DIRECTIONS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="sort_direction must be asc or desc",
+        )
+
+    return normalized_sort_by, normalized_sort_direction
 
 
 def _ensure_file_exists(path) -> None:
@@ -513,6 +534,8 @@ def list_videos(
     created_from: str | None = Query(default=None, min_length=10, max_length=10),
     created_to: str | None = Query(default=None, min_length=10, max_length=10),
     edited: bool | None = Query(default=None),
+    sort_by: str = Query(default=VIDEO_LIST_DEFAULT_SORT_BY),
+    sort_direction: str = Query(default=VIDEO_LIST_DEFAULT_SORT_DIRECTION),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     current_user: User | None = Depends(get_optional_current_user),
@@ -525,6 +548,10 @@ def list_videos(
         created_from=created_from,
         created_to=created_to,
     )
+    resolved_sort_by, resolved_sort_direction = _resolve_video_sort(
+        sort_by,
+        sort_direction,
+    )
     result = list_videos_use_case.execute(
         ListVideosQuery(
             title=title,
@@ -534,6 +561,8 @@ def list_videos(
             created_from=resolved_created_from,
             created_to=resolved_created_to,
             edited=edited,
+            sort_by=resolved_sort_by,
+            sort_direction=resolved_sort_direction,
             limit=limit,
             offset=offset,
         ),

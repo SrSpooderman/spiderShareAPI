@@ -30,7 +30,15 @@ from app.modules.users.domain.user import User, UserRole, can_create_user_with_r
 from app.modules.users.wiring import get_user_repository
 from app.modules.videos.application.delete_video import DeleteVideo
 from app.modules.videos.application.errors import VideoNotFoundError, VideoPermissionError
-from app.modules.videos.domain.ports import VideoProcessingQueue, VideoRepository, VideoStorage
+from app.modules.videos.domain.ports import (
+    VIDEO_LIST_DEFAULT_SORT_BY,
+    VIDEO_LIST_DEFAULT_SORT_DIRECTION,
+    VIDEO_LIST_SORT_DIRECTIONS,
+    VIDEO_LIST_SORT_FIELDS,
+    VideoProcessingQueue,
+    VideoRepository,
+    VideoStorage,
+)
 from app.modules.videos.domain.video import VideoProcessingStatus
 from app.modules.videos.wiring import (
     get_delete_video,
@@ -67,6 +75,23 @@ SAFE_CONFIG_FIELDS: tuple[tuple[str, str], ...] = (
     ("video_processing_job_timeout_seconds", "Procesamiento"),
     ("discord_webhook_enabled", "Integraciones"),
 )
+
+
+def _resolve_video_sort(sort_by: str, sort_direction: str) -> tuple[str, str]:
+    normalized_sort_by = sort_by.strip()
+    normalized_sort_direction = sort_direction.strip().lower()
+    if normalized_sort_by not in VIDEO_LIST_SORT_FIELDS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"sort_by must be one of: {', '.join(VIDEO_LIST_SORT_FIELDS)}",
+        )
+    if normalized_sort_direction not in VIDEO_LIST_SORT_DIRECTIONS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="sort_direction must be asc or desc",
+        )
+
+    return normalized_sort_by, normalized_sort_direction
 
 
 def _fields_set(request) -> set[str]:
@@ -120,17 +145,25 @@ def admin_list_videos(
     owner_id: UUID | None = Query(default=None),
     owner: str | None = Query(default=None),
     visibility: str | None = Query(default=None, pattern="^(public|registered)$"),
+    sort_by: str = Query(default=VIDEO_LIST_DEFAULT_SORT_BY),
+    sort_direction: str = Query(default=VIDEO_LIST_DEFAULT_SORT_DIRECTION),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     _current_user: User = Depends(require_admin),
     read_model: AdminReadModel = Depends(get_admin_read_model),
 ) -> list[AdminVideoSummaryResponse]:
+    resolved_sort_by, resolved_sort_direction = _resolve_video_sort(
+        sort_by,
+        sort_direction,
+    )
     return read_model.list_videos(
         status=status_filter,
         title=title,
         owner_id=owner_id,
         owner=owner,
         visibility=visibility,
+        sort_by=resolved_sort_by,
+        sort_direction=resolved_sort_direction,
         limit=limit,
         offset=offset,
     )

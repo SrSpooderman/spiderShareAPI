@@ -58,6 +58,53 @@ def test_list_videos_applies_visibility_filters_and_created_at_desc_order(
 
 
 @pytest.mark.unit
+def test_list_videos_orders_by_source_created_at_in_requested_direction(
+    video_factory,
+    video_repository,
+) -> None:
+    oldest_source = video_repository.add(
+        video_factory(
+            title="Oldest source",
+            created_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
+            source_created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        )
+    )
+    newest_source = video_repository.add(
+        video_factory(
+            title="Newest source",
+            created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            source_created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        )
+    )
+    missing_source = video_repository.add(
+        video_factory(
+            title="Missing source",
+            created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+            source_created_at=None,
+        )
+    )
+    list_videos = ListVideos(video_repository)
+
+    descending_result = list_videos.execute(
+        ListVideosQuery(
+            sort_by="source_created_at",
+            sort_direction="desc",
+        ),
+        current_user=None,
+    )
+    ascending_result = list_videos.execute(
+        ListVideosQuery(
+            sort_by="source_created_at",
+            sort_direction="asc",
+        ),
+        current_user=None,
+    )
+
+    assert descending_result.items == [newest_source, oldest_source, missing_source]
+    assert ascending_result.items == [oldest_source, newest_source, missing_source]
+
+
+@pytest.mark.unit
 def test_update_video_only_sets_edited_when_requested_by_owner(
     user_factory,
     video_factory,

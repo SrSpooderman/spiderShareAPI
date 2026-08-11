@@ -19,6 +19,18 @@ from app.modules.videos.domain.video import (
     VideoVariantType,
 )
 
+VIDEO_LIST_DEFAULT_SORT_BY = "created_at"
+VIDEO_LIST_DEFAULT_SORT_DIRECTION = "desc"
+VIDEO_LIST_SORT_DIRECTIONS = ("asc", "desc")
+VIDEO_LIST_SORT_FIELDS = (
+    "created_at",
+    "source_created_at",
+    "updated_at",
+    "title",
+    "favorite_count",
+    "duration_seconds",
+)
+
 
 @dataclass(frozen=True)
 class VideoListFilters:
@@ -29,6 +41,8 @@ class VideoListFilters:
     created_from: date | None = None
     created_to: date | None = None
     edited: bool | None = None
+    sort_by: str = VIDEO_LIST_DEFAULT_SORT_BY
+    sort_direction: str = VIDEO_LIST_DEFAULT_SORT_DIRECTION
 
 
 @dataclass(frozen=True)

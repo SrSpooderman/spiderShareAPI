@@ -59,6 +59,8 @@ export type VideoListFilters = {
   title?: string;
   owner?: string;
   visibility?: "public" | "registered";
+  sortBy?: "created_at" | "source_created_at" | "updated_at" | "title" | "favorite_count" | "duration_seconds";
+  sortDirection?: "asc" | "desc";
   limit?: number;
   offset?: number;
 };

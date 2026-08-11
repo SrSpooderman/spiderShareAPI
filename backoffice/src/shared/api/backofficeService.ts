@@ -47,6 +47,8 @@ export const backofficeService = {
         title: filters.title,
         owner: filters.owner,
         visibility: filters.visibility,
+        sort_by: filters.sortBy,
+        sort_direction: filters.sortDirection,
         limit: filters.limit,
         offset: filters.offset
       })}`

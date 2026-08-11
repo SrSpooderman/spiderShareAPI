@@ -24,6 +24,7 @@ from app.modules.admin.infrastructure.models import (
     WorkerEventModel,
 )
 from app.modules.users.infrastructure.models import UserModel
+from app.modules.videos.domain.ports import VIDEO_LIST_DEFAULT_SORT_BY
 from app.modules.videos.domain.video import VideoProcessingStatus
 from app.modules.videos.infrastructure.models import (
     VideoCategoryAssignmentModel,
@@ -31,6 +32,15 @@ from app.modules.videos.infrastructure.models import (
     VideoProcessingErrorModel,
     VideoTagAssignmentModel,
 )
+
+ADMIN_VIDEO_SORT_COLUMNS = {
+    "created_at": VideoModel.created_at,
+    "source_created_at": VideoModel.source_created_at,
+    "updated_at": VideoModel.updated_at,
+    "title": VideoModel.title,
+    "favorite_count": VideoModel.favorite_count,
+    "duration_seconds": VideoModel.duration_seconds,
+}
 
 
 class AdminReadModel:
@@ -45,6 +55,8 @@ class AdminReadModel:
         owner_id: UUID | None = None,
         owner: str | None = None,
         visibility: str | None = None,
+        sort_by: str = VIDEO_LIST_DEFAULT_SORT_BY,
+        sort_direction: str = "desc",
         limit: int = 50,
         offset: int = 0,
     ) -> list[AdminVideoSummaryResponse]:
@@ -148,6 +160,8 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
         owner_id: UUID | None = None,
         owner: str | None = None,
         visibility: str | None = None,
+        sort_by: str = VIDEO_LIST_DEFAULT_SORT_BY,
+        sort_direction: str = "desc",
         limit: int = 50,
         offset: int = 0,
     ) -> list[AdminVideoSummaryResponse]:
@@ -157,7 +171,7 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
                 selectinload(VideoModel.owner),
                 selectinload(VideoModel.processing_errors),
             )
-            .order_by(VideoModel.created_at.desc())
+            .order_by(*self._video_order_by(sort_by, sort_direction))
             .limit(limit)
             .offset(offset)
         )
@@ -178,6 +192,23 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
             statement = statement.where(*conditions)
 
         return [self._video_summary(model) for model in self.session.scalars(statement).all()]
+
+    def _video_order_by(self, sort_by: str, sort_direction: str) -> list:
+        sort_column = ADMIN_VIDEO_SORT_COLUMNS.get(
+            sort_by,
+            ADMIN_VIDEO_SORT_COLUMNS[VIDEO_LIST_DEFAULT_SORT_BY],
+        )
+        sort_expression = (
+            sort_column.asc()
+            if sort_direction == "asc"
+            else sort_column.desc()
+        )
+
+        return [
+            sort_column.is_(None).asc(),
+            sort_expression,
+            VideoModel.id.asc(),
+        ]
 
     def get_video(self, video_id: UUID) -> AdminVideoDetailResponse | None:
         statement = (

@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.modules.videos.domain.ports import (
+    VIDEO_LIST_DEFAULT_SORT_BY,
     VideoCategoryRepository,
     VideoListFilters,
     VideoListResult,
@@ -43,6 +44,15 @@ from app.modules.videos.infrastructure.models import (
     VideoTagModel,
     VideoVariantModel,
 )
+
+VIDEO_LIST_SORT_COLUMNS = {
+    "created_at": VideoModel.created_at,
+    "source_created_at": VideoModel.source_created_at,
+    "updated_at": VideoModel.updated_at,
+    "title": VideoModel.title,
+    "favorite_count": VideoModel.favorite_count,
+    "duration_seconds": VideoModel.duration_seconds,
+}
 
 
 class SqlAlchemyVideoCategoryRepository(VideoCategoryRepository):
@@ -256,7 +266,7 @@ class SqlAlchemyVideoRepository(VideoRepository):
                 selectinload(VideoModel.processing_errors),
                 selectinload(VideoModel.owner),
             )
-            .order_by(VideoModel.created_at.desc())
+            .order_by(*self._list_order_by(filters))
             .limit(limit)
             .offset(offset)
         )
@@ -654,6 +664,23 @@ class SqlAlchemyVideoRepository(VideoRepository):
             )
 
         return conditions
+
+    def _list_order_by(self, filters: VideoListFilters) -> list:
+        sort_column = VIDEO_LIST_SORT_COLUMNS.get(
+            filters.sort_by,
+            VIDEO_LIST_SORT_COLUMNS[VIDEO_LIST_DEFAULT_SORT_BY],
+        )
+        sort_expression = (
+            sort_column.asc()
+            if filters.sort_direction == "asc"
+            else sort_column.desc()
+        )
+
+        return [
+            sort_column.is_(None).asc(),
+            sort_expression,
+            VideoModel.id.asc(),
+        ]
 
     def _replace_category_assignments(
         self,

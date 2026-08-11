@@ -262,7 +262,7 @@ class FakeVideoRepository:
                 if tag_ids & {tag.id for tag in video.tags}
             ]
 
-        videos = sorted(videos, key=lambda video: video.created_at, reverse=True)
+        videos = self._sort_videos(videos, filters)
 
         return VideoListResult(items=videos[offset : offset + limit], total=len(videos))
 
@@ -446,6 +446,33 @@ class FakeVideoRepository:
                 self.tags[tag_id] = tag
             tags.append(tag)
         return tags
+
+    def _sort_videos(
+        self,
+        videos: list[Video],
+        filters: VideoListFilters,
+    ) -> list[Video]:
+        sortable_values = [
+            (video, getattr(video, filters.sort_by, None))
+            for video in videos
+        ]
+        non_null_values = [
+            (video, value)
+            for video, value in sortable_values
+            if value is not None
+        ]
+        null_values = [video for video, value in sortable_values if value is None]
+        non_null_values = sorted(non_null_values, key=lambda item: item[0].id)
+        ordered_videos = [
+            video
+            for video, _value in sorted(
+                non_null_values,
+                key=lambda item: item[1],
+                reverse=filters.sort_direction == "desc",
+            )
+        ]
+
+        return ordered_videos + sorted(null_values, key=lambda video: video.id)
 
     def delete(self, video_id: UUID) -> bool:
         self.deleted.append(video_id)

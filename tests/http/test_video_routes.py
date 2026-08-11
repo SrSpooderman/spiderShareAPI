@@ -178,6 +178,52 @@ def test_list_videos_filters_by_exact_created_date(
 
 
 @pytest.mark.http
+def test_list_videos_sorts_by_source_created_at(
+    app,
+    client,
+    video_factory,
+    video_repository,
+) -> None:
+    oldest_source = video_repository.add(
+        video_factory(
+            source_created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        )
+    )
+    newest_source = video_repository.add(
+        video_factory(
+            source_created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        )
+    )
+    missing_source = video_repository.add(video_factory(source_created_at=None))
+    app.dependency_overrides[get_video_repository] = lambda: video_repository
+    app.dependency_overrides[get_optional_current_user] = lambda: None
+
+    response = client.get(
+        "/videos",
+        params={"sort_by": "source_created_at", "sort_direction": "desc"},
+    )
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()["items"]] == [
+        str(newest_source.id),
+        str(oldest_source.id),
+        str(missing_source.id),
+    ]
+
+    response = client.get(
+        "/videos",
+        params={"sort_by": "source_created_at", "sort_direction": "asc"},
+    )
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()["items"]] == [
+        str(oldest_source.id),
+        str(newest_source.id),
+        str(missing_source.id),
+    ]
+
+
+@pytest.mark.http
 def test_list_videos_rejects_invalid_date_filters(
     client,
 ) -> None:
@@ -193,6 +239,21 @@ def test_list_videos_rejects_invalid_date_filters(
 
     assert response.status_code == 422
     assert response.json()["detail"] == "created_from cannot be after created_to"
+
+
+@pytest.mark.http
+def test_list_videos_rejects_invalid_sort(
+    client,
+) -> None:
+    response = client.get("/videos", params={"sort_by": "owner.password_hash"})
+
+    assert response.status_code == 422
+    assert response.json()["detail"].startswith("sort_by must be one of")
+
+    response = client.get("/videos", params={"sort_direction": "sideways"})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "sort_direction must be asc or desc"
 
 
 @pytest.mark.http
