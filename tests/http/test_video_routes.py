@@ -1,17 +1,26 @@
+from datetime import datetime, timezone
+
 import pytest
+from uuid import uuid4
 
 from app.modules.auth.wiring import get_current_user, get_optional_current_user
+from app.modules.videos.application.errors import VideoFileTooLargeError
 from app.modules.videos.wiring import (
+    get_video_category_repository,
     get_video_processing_queue,
     get_video_repository,
     get_video_storage,
+    get_video_tag_repository,
 )
-from app.modules.videos.domain.video import VideoProcessingStatus
+from app.modules.steam.wiring import get_steamgriddb_client
+from app.modules.videos.domain.video import VideoProcessingStatus, VideoVariantType
 from tests.factories import make_video_category, make_video_tag, make_video_variant
+from tests.fakes import FakeSteamGridDbClient
+from tests.fakes import FakeVideoStorage
 
 
 @pytest.mark.http
-def test_list_videos_supports_pagination_filters_and_popularity_order(
+def test_list_videos_supports_pagination_filters_and_created_at_desc_order(
     app,
     client,
     user_factory,
@@ -21,26 +30,28 @@ def test_list_videos_supports_pagination_filters_and_popularity_order(
     owner = user_factory(username="owner", display_name="Owner")
     category = make_video_category(name="Speedrun")
     tag = make_video_tag(name="boss")
-    matching_high = video_repository.add(
+    matching_older = video_repository.add(
         video_factory(
             owner_id=owner.id,
             owner_username=owner.username,
             owner_display_name=owner.display_name,
-            title="Boss clip",
+            title="Boss clip older",
             favorite_count=8,
             categories=[category],
             tags=[tag],
+            created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
         )
     )
-    matching_low = video_repository.add(
+    matching_newer = video_repository.add(
         video_factory(
             owner_id=owner.id,
             owner_username=owner.username,
             owner_display_name=owner.display_name,
-            title="Boss clip low",
+            title="Boss clip newer",
             favorite_count=2,
             categories=[category],
             tags=[tag],
+            created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
         )
     )
     video_repository.add(video_factory(title="Other clip", favorite_count=99))
@@ -51,7 +62,7 @@ def test_list_videos_supports_pagination_filters_and_popularity_order(
         "/videos",
         params=[
             ("title", "boss"),
-            ("tags", "boss"),
+            ("tag_ids", str(tag.id)),
             ("category_ids", str(category.id)),
             ("owner_id", str(owner.id)),
             ("limit", "1"),
@@ -64,19 +75,27 @@ def test_list_videos_supports_pagination_filters_and_popularity_order(
     assert body["total"] == 2
     assert body["limit"] == 1
     assert body["offset"] == 0
-    assert [item["id"] for item in body["items"]] == [str(matching_high.id)]
-    assert body["items"][0]["popularity_score"] == matching_high.favorite_count * 4
+    assert [item["id"] for item in body["items"]] == [str(matching_newer.id)]
+    assert body["items"][0]["popularity_score"] == matching_newer.favorite_count * 4
     assert body["items"][0]["owner"] == {
         "id": str(owner.id),
         "username": "owner",
         "display_name": "Owner",
     }
+    assert body["items"][0]["original_filename"] == matching_newer.original_filename
+    assert body["items"][0]["clip_url"] == f"/clip/{matching_newer.id}"
+    assert body["items"][0]["download_url"] == f"/videos/{matching_newer.id}/download"
+    assert body["items"][0]["is_owner"] is False
+    assert body["items"][0]["can_edit"] is False
+    assert body["items"][0]["can_delete"] is False
+    assert body["items"][0]["is_favorite"] is False
+    assert body["items"][0]["reactions"] == []
 
     response = client.get(
         "/videos",
         params=[
             ("title", "boss"),
-            ("tags", "boss"),
+            ("tag_ids", str(tag.id)),
             ("category_ids", str(category.id)),
             ("owner_id", str(owner.id)),
             ("limit", "1"),
@@ -85,8 +104,156 @@ def test_list_videos_supports_pagination_filters_and_popularity_order(
     )
 
     assert response.status_code == 200
-    assert [item["id"] for item in response.json()["items"]] == [str(matching_low.id)]
-    assert response.json()["items"][0]["popularity_score"] == matching_low.favorite_count * 4
+    assert [item["id"] for item in response.json()["items"]] == [str(matching_older.id)]
+    assert response.json()["items"][0]["popularity_score"] == matching_older.favorite_count * 4
+
+
+@pytest.mark.http
+def test_list_videos_filters_by_created_date_range_and_edited(
+    app,
+    client,
+    video_factory,
+    video_repository,
+) -> None:
+    matching = video_repository.add(
+        video_factory(
+            title="Edited clip",
+            edited=True,
+            created_at=datetime(2025, 5, 10, 12, 0, tzinfo=timezone.utc),
+        )
+    )
+    video_repository.add(
+        video_factory(
+            title="Raw clip",
+            edited=False,
+            created_at=datetime(2025, 5, 10, 12, 0, tzinfo=timezone.utc),
+        )
+    )
+    video_repository.add(
+        video_factory(
+            title="Old edited clip",
+            edited=True,
+            created_at=datetime(2024, 12, 31, 12, 0, tzinfo=timezone.utc),
+        )
+    )
+    app.dependency_overrides[get_video_repository] = lambda: video_repository
+    app.dependency_overrides[get_optional_current_user] = lambda: None
+
+    response = client.get(
+        "/videos",
+        params={
+            "created_from": "01/04/2025",
+            "created_to": "30/06/2026",
+            "edited": "true",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert [item["id"] for item in body["items"]] == [str(matching.id)]
+
+
+@pytest.mark.http
+def test_list_videos_filters_by_exact_created_date(
+    app,
+    client,
+    video_factory,
+    video_repository,
+) -> None:
+    matching = video_repository.add(
+        video_factory(created_at=datetime(2026, 6, 30, 23, 59, tzinfo=timezone.utc))
+    )
+    video_repository.add(
+        video_factory(created_at=datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc))
+    )
+    app.dependency_overrides[get_video_repository] = lambda: video_repository
+    app.dependency_overrides[get_optional_current_user] = lambda: None
+
+    response = client.get("/videos", params={"created_date": "30/06/2026"})
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    assert response.json()["items"][0]["id"] == str(matching.id)
+
+
+@pytest.mark.http
+def test_list_videos_sorts_by_source_created_at(
+    app,
+    client,
+    video_factory,
+    video_repository,
+) -> None:
+    oldest_source = video_repository.add(
+        video_factory(
+            source_created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        )
+    )
+    newest_source = video_repository.add(
+        video_factory(
+            source_created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        )
+    )
+    missing_source = video_repository.add(video_factory(source_created_at=None))
+    app.dependency_overrides[get_video_repository] = lambda: video_repository
+    app.dependency_overrides[get_optional_current_user] = lambda: None
+
+    response = client.get(
+        "/videos",
+        params={"sort_by": "source_created_at", "sort_direction": "desc"},
+    )
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()["items"]] == [
+        str(newest_source.id),
+        str(oldest_source.id),
+        str(missing_source.id),
+    ]
+
+    response = client.get(
+        "/videos",
+        params={"sort_by": "source_created_at", "sort_direction": "asc"},
+    )
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()["items"]] == [
+        str(oldest_source.id),
+        str(newest_source.id),
+        str(missing_source.id),
+    ]
+
+
+@pytest.mark.http
+def test_list_videos_rejects_invalid_date_filters(
+    client,
+) -> None:
+    response = client.get("/videos", params={"created_from": "2026-06-30"})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "created_from must use DD/MM/YYYY format"
+
+    response = client.get(
+        "/videos",
+        params={"created_from": "30/06/2026", "created_to": "01/04/2025"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "created_from cannot be after created_to"
+
+
+@pytest.mark.http
+def test_list_videos_rejects_invalid_sort(
+    client,
+) -> None:
+    response = client.get("/videos", params={"sort_by": "owner.password_hash"})
+
+    assert response.status_code == 422
+    assert response.json()["detail"].startswith("sort_by must be one of")
+
+    response = client.get("/videos", params={"sort_direction": "sideways"})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "sort_direction must be asc or desc"
 
 
 @pytest.mark.http
@@ -109,7 +276,9 @@ def test_upload_video_creates_video_and_stores_original(
         data={
             "title": "Boss clip",
             "description": "Context",
-            "tags": ["boss", "clip"],
+            "edited": "true",
+            "source_created_at": "2026-07-07T18:22:10Z",
+            "tag_ids": [str(make_video_tag().id), str(make_video_tag().id)],
         },
         files={"file": ("clip.mp4", b"video-bytes", "video/mp4")},
     )
@@ -125,15 +294,22 @@ def test_upload_video_creates_video_and_stores_original(
     }
     assert body["original_filename"] == "clip.mp4"
     assert body["processing_status"] == "pending"
+    assert body["edited"] is True
+    assert body["edited_at"] is None
     assert body["width"] is None
     assert body["height"] is None
     assert body["duration_seconds"] is None
+    assert body["source_created_at"] == "2026-07-07T18:22:10Z"
     assert body["thumbnail_path"] is None
     assert body["playback_url"] is None
+    assert body["clip_url"] == f"/clip/{body['id']}"
     assert body["download_url"] == f"/videos/{body['id']}/download"
     assert body["thumbnail_url"] is None
     assert body["variants"] == []
     assert video_repository.created[0].id == video_storage.saved[0]["video_id"]
+    assert video_repository.created[0].source_created_at == datetime(
+        2026, 7, 7, 18, 22, 10, tzinfo=timezone.utc
+    )
     assert video_storage.saved[0]["content"] == b"video-bytes"
     assert video_processing_queue.enqueued == [video_repository.created[0].id]
     assert video_transcoder.transcoded == []
@@ -163,6 +339,473 @@ def test_upload_video_allows_missing_description(
     assert response.status_code == 201
     assert response.json()["description"] == ""
     assert video_processing_queue.enqueued == [video_repository.created[0].id]
+
+
+@pytest.mark.http
+def test_upload_video_file_too_large_detail_includes_size_and_limit(
+    app,
+    client,
+    user_factory,
+    video_repository,
+) -> None:
+    user = user_factory()
+    app.dependency_overrides[get_video_repository] = lambda: video_repository
+    app.dependency_overrides[get_video_storage] = lambda: FakeVideoStorage(
+        VideoFileTooLargeError(size_bytes=12, limit_bytes=10)
+    )
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    response = client.post(
+        "/videos",
+        data={"title": "Boss clip"},
+        files={"file": ("clip.mp4", b"video-bytes!!", "video/mp4")},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == {
+        "message": "Video file is too large",
+        "size_bytes": 12,
+        "limit_bytes": 10,
+    }
+
+
+@pytest.mark.http
+def test_list_and_create_custom_video_categories(
+    app,
+    client,
+    user_factory,
+    video_category_repository,
+) -> None:
+    admin = user_factory(role="admin")
+    video_category_repository.add(make_video_category(name="Existing"))
+    app.dependency_overrides[get_video_category_repository] = (
+        lambda: video_category_repository
+    )
+    app.dependency_overrides[get_current_user] = lambda: admin
+
+    response = client.get("/category")
+
+    assert response.status_code == 200
+    assert response.json()[0]["name"] == "Existing"
+    assert response.json()[0]["source"] == "custom"
+
+    video_category_repository.add(make_video_category(name="Puzzle"))
+    response = client.get("/category", params={"name": "exis"})
+
+    assert response.status_code == 200
+    assert [category["name"] for category in response.json()] == ["Existing"]
+
+    response = client.post(
+        "/category",
+        json={
+            "name": "Indie",
+            "thumbnail_vertical_url": "https://cdn.example.com/indie-v.jpg",
+            "thumbnail_horizontal_url": "https://cdn.example.com/indie-h.jpg",
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["name"] == "Indie"
+    assert body["source"] == "custom"
+    assert body["steam_appid"] is None
+    assert body["thumbnail_vertical_url"] == "https://cdn.example.com/indie-v.jpg"
+    assert video_category_repository.created[0].name == "Indie"
+
+
+@pytest.mark.http
+def test_list_and_create_video_tags(
+    app,
+    client,
+    user_factory,
+    video_tag_repository,
+) -> None:
+    user = user_factory()
+    video_tag_repository.add(make_video_tag(name="Existing"))
+    app.dependency_overrides[get_video_tag_repository] = lambda: video_tag_repository
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    response = client.get("/tags")
+
+    assert response.status_code == 200
+    assert response.json()[0]["name"] == "Existing"
+
+    response = client.post("/tags", json={"name": "Boss"})
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["name"] == "Boss"
+    assert video_tag_repository.created[0].name == "Boss"
+
+
+@pytest.mark.http
+def test_search_video_tags_by_partial_id_name_or_both(
+    app,
+    client,
+    video_tag_repository,
+) -> None:
+    boss = video_tag_repository.add(make_video_tag(name="Boss Fight"))
+    build = video_tag_repository.add(make_video_tag(name="Build Guide"))
+    video_tag_repository.add(make_video_tag(name="Puzzle"))
+    app.dependency_overrides[get_video_tag_repository] = lambda: video_tag_repository
+
+    response = client.get("/tags", params={"name": "bo"})
+
+    assert response.status_code == 200
+    assert [tag["id"] for tag in response.json()] == [str(boss.id)]
+
+    response = client.get("/tags", params={"id": str(build.id)[:8]})
+
+    assert response.status_code == 200
+    assert response.json() == [{"id": str(build.id), "name": "Build Guide"}]
+
+    response = client.get(
+        "/tags",
+        params={"id": str(boss.id)[:8].upper(), "name": "fight"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == [{"id": str(boss.id), "name": "Boss Fight"}]
+
+
+@pytest.mark.http
+def test_get_video_tag_by_id(
+    app,
+    client,
+    video_tag_repository,
+) -> None:
+    tag = video_tag_repository.add(make_video_tag(name="Boss Fight"))
+    app.dependency_overrides[get_video_tag_repository] = lambda: video_tag_repository
+
+    response = client.get(f"/tags/{tag.id}")
+
+    assert response.status_code == 200
+    assert response.json() == {"id": str(tag.id), "name": "Boss Fight"}
+
+    response = client.get(f"/tags/{uuid4()}")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Video tag not found"
+
+
+@pytest.mark.http
+def test_update_video_tag(
+    app,
+    client,
+    user_factory,
+    video_tag_repository,
+) -> None:
+    user = user_factory()
+    tag = video_tag_repository.add(make_video_tag(name="Old name"))
+    app.dependency_overrides[get_video_tag_repository] = lambda: video_tag_repository
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    response = client.patch(f"/tags/{tag.id}", json={"name": "New name"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == str(tag.id)
+    assert body["name"] == "New name"
+
+    response = client.patch(f"/tags/{uuid4()}", json={"name": "Missing"})
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Video tag not found"
+
+
+@pytest.mark.http
+def test_delete_video_tag_requires_admin(
+    app,
+    client,
+    user_factory,
+    video_tag_repository,
+) -> None:
+    user = user_factory()
+    admin = user_factory(role="admin")
+    tag = video_tag_repository.add(make_video_tag(name="To delete"))
+    app.dependency_overrides[get_video_tag_repository] = lambda: video_tag_repository
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    response = client.delete(f"/tags/{tag.id}")
+
+    assert response.status_code == 403
+    assert tag.id in video_tag_repository.tags
+
+    app.dependency_overrides[get_current_user] = lambda: admin
+    response = client.delete(f"/tags/{tag.id}")
+
+    assert response.status_code == 204
+    assert tag.id not in video_tag_repository.tags
+
+    response = client.delete(f"/tags/{tag.id}")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Video tag not found"
+
+
+@pytest.mark.http
+def test_update_video_category(
+    app,
+    client,
+    user_factory,
+    video_category_repository,
+) -> None:
+    admin = user_factory(role="admin")
+    category = video_category_repository.add(
+        make_video_category(
+            name="Old name",
+            thumbnail_vertical_url="https://cdn.example.com/old-v.jpg",
+            thumbnail_horizontal_url="https://cdn.example.com/old-h.jpg",
+        )
+    )
+    app.dependency_overrides[get_video_category_repository] = (
+        lambda: video_category_repository
+    )
+    app.dependency_overrides[get_current_user] = lambda: admin
+
+    response = client.patch(
+        f"/category/{category.id}",
+        json={
+            "name": "New name",
+            "thumbnail_vertical_url": "https://cdn.example.com/new-v.jpg",
+            "thumbnail_horizontal_url": "https://cdn.example.com/new-h.jpg",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == str(category.id)
+    assert body["name"] == "New name"
+    assert body["source"] == "custom"
+    assert body["thumbnail_vertical_url"] == "https://cdn.example.com/new-v.jpg"
+    assert body["thumbnail_horizontal_url"] == "https://cdn.example.com/new-h.jpg"
+
+    response = client.patch(
+        f"/category/{uuid4()}",
+        json={"name": "Missing"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Video category not found"
+
+
+@pytest.mark.http
+def test_delete_video_category(
+    app,
+    client,
+    user_factory,
+    video_category_repository,
+) -> None:
+    admin = user_factory(role="admin")
+    category = video_category_repository.add(make_video_category(name="To delete"))
+    app.dependency_overrides[get_video_category_repository] = (
+        lambda: video_category_repository
+    )
+    app.dependency_overrides[get_current_user] = lambda: admin
+
+    response = client.delete(f"/category/{category.id}")
+
+    assert response.status_code == 204
+    assert video_category_repository.get_by_id(category.id) is None
+
+    response = client.delete(f"/category/{category.id}")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Video category not found"
+
+
+@pytest.mark.http
+def test_search_steamgriddb_games_for_video_categories(
+    app,
+    client,
+    user_factory,
+    video_category_repository,
+) -> None:
+    admin = user_factory(role="admin")
+    steamgriddb_client = FakeSteamGridDbClient(
+        games_by_search={
+            "portal": [
+                {
+                    "id": 22,
+                    "name": "Portal",
+                    "types": ["game"],
+                    "verified": True,
+                },
+                {"id": None, "name": "Broken"},
+            ]
+        }
+    )
+    app.dependency_overrides[get_video_category_repository] = (
+        lambda: video_category_repository
+    )
+    app.dependency_overrides[get_steamgriddb_client] = lambda: steamgriddb_client
+    app.dependency_overrides[get_current_user] = lambda: admin
+
+    response = client.get("/category/steam/search?term=portal")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {"id": 22, "name": "Portal", "types": ["game"], "verified": True}
+    ]
+    assert steamgriddb_client.search_requests == ["portal"]
+
+
+@pytest.mark.http
+def test_list_steamgriddb_grids_for_video_category_selection(
+    app,
+    client,
+    user_factory,
+    video_category_repository,
+) -> None:
+    admin = user_factory(role="admin")
+    steamgriddb_client = FakeSteamGridDbClient(
+        grids_by_game_dimensions={
+            (22, "600x900"): [
+                {
+                    "id": 1,
+                    "url": "https://cdn.example.com/portal-v-1.jpg",
+                    "thumb": "https://cdn.example.com/portal-v-1-thumb.jpg",
+                    "width": 600,
+                    "height": 900,
+                    "style": "alternate",
+                    "nsfw": False,
+                    "humor": False,
+                    "epilepsy": False,
+                },
+                {
+                    "id": 2,
+                    "url": "https://cdn.example.com/portal-v-2.jpg",
+                    "width": 600,
+                    "height": 900,
+                },
+                {
+                    "id": 3,
+                    "url": "https://cdn.example.com/portal-v-3.jpg",
+                    "width": 600,
+                    "height": 900,
+                },
+            ],
+        },
+    )
+    app.dependency_overrides[get_video_category_repository] = (
+        lambda: video_category_repository
+    )
+    app.dependency_overrides[get_steamgriddb_client] = lambda: steamgriddb_client
+    app.dependency_overrides[get_current_user] = lambda: admin
+
+    response = client.get(
+        "/category/steam/games/22/grids",
+        params={"dimensions": "600x900", "limit": 2, "offset": 0},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["limit"] == 2
+    assert body["offset"] == 0
+    assert body["has_more"] is True
+    assert body["next_offset"] == 2
+    assert [item["url"] for item in body["items"]] == [
+        "https://cdn.example.com/portal-v-1.jpg",
+        "https://cdn.example.com/portal-v-2.jpg",
+    ]
+    assert body["items"][0]["thumb"] == "https://cdn.example.com/portal-v-1-thumb.jpg"
+    assert steamgriddb_client.grid_requests == [(22, "600x900", 3, 1)]
+
+
+@pytest.mark.http
+def test_import_steam_video_category_uses_stable_grid_dimensions(
+    app,
+    client,
+    user_factory,
+    video_category_repository,
+) -> None:
+    admin = user_factory(role="admin")
+    steamgriddb_client = FakeSteamGridDbClient(
+        games_by_appid={400: {"id": 22, "name": "Portal"}},
+        grids_by_game_dimensions={
+            (22, "600x900"): [{"url": "https://cdn.example.com/portal-v.jpg"}],
+            (22, "920x430"): [{"url": "https://cdn.example.com/portal-h.jpg"}],
+        },
+    )
+    app.dependency_overrides[get_video_category_repository] = (
+        lambda: video_category_repository
+    )
+    app.dependency_overrides[get_steamgriddb_client] = lambda: steamgriddb_client
+    app.dependency_overrides[get_current_user] = lambda: admin
+
+    response = client.post(
+        "/category/steam/import",
+        json={"steam_appid": 400},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["name"] == "Portal"
+    assert body["source"] == "steam"
+    assert body["steam_appid"] == 400
+    assert body["steamgriddb_game_id"] == 22
+    assert body["thumbnail_vertical_url"] == "https://cdn.example.com/portal-v.jpg"
+    assert body["thumbnail_horizontal_url"] == "https://cdn.example.com/portal-h.jpg"
+    assert steamgriddb_client.grid_requests == [
+        (22, "600x900", 1, None),
+        (22, "920x430", 1, None),
+    ]
+    assert video_category_repository.upserted[0].steam_appid == 400
+
+
+@pytest.mark.http
+def test_import_steam_video_category_uses_selected_grid_urls(
+    app,
+    client,
+    user_factory,
+    video_category_repository,
+) -> None:
+    admin = user_factory(role="admin")
+    steamgriddb_client = FakeSteamGridDbClient(
+        games_by_appid={400: {"id": 22, "name": "Portal"}},
+    )
+    app.dependency_overrides[get_video_category_repository] = (
+        lambda: video_category_repository
+    )
+    app.dependency_overrides[get_steamgriddb_client] = lambda: steamgriddb_client
+    app.dependency_overrides[get_current_user] = lambda: admin
+
+    response = client.post(
+        "/category/steam/import",
+        json={
+            "steam_appid": 400,
+            "thumbnail_vertical_url": "https://cdn.example.com/selected-v.jpg",
+            "thumbnail_horizontal_url": "https://cdn.example.com/selected-h.jpg",
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["thumbnail_vertical_url"] == "https://cdn.example.com/selected-v.jpg"
+    assert body["thumbnail_horizontal_url"] == "https://cdn.example.com/selected-h.jpg"
+    assert steamgriddb_client.grid_requests == []
+    assert video_category_repository.upserted[0].thumbnail_vertical_url == (
+        "https://cdn.example.com/selected-v.jpg"
+    )
+
+
+@pytest.mark.http
+def test_import_steam_video_category_requires_external_id(
+    app,
+    client,
+    user_factory,
+    video_category_repository,
+) -> None:
+    admin = user_factory(role="admin")
+    app.dependency_overrides[get_video_category_repository] = (
+        lambda: video_category_repository
+    )
+    app.dependency_overrides[get_current_user] = lambda: admin
+
+    response = client.post("/category/steam/import", json={})
+
+    assert response.status_code == 422
+    assert video_category_repository.upserted == []
 
 
 @pytest.mark.http
@@ -324,17 +967,25 @@ def test_video_download_stream_and_thumbnail_respect_visibility(
                 make_video_variant(
                     video_id=owner.id,
                     path="variants/video/low_h264.mp4",
-                )
+                ),
+                make_video_variant(
+                    video_id=owner.id,
+                    variant_type=VideoVariantType.ORIGINAL_H264,
+                    path="variants/video/original_h264.mp4",
+                ),
             ],
         )
     )
     original_path = tmp_path / "original.mp4"
+    original_h264_path = tmp_path / "original_h264.mp4"
     stream_path = tmp_path / "low_h264.mp4"
     thumbnail_path = tmp_path / "thumbnail.jpg"
     original_path.write_bytes(b"original-video")
+    original_h264_path.write_bytes(b"original-h264-video")
     stream_path.write_bytes(b"stream-video")
     thumbnail_path.write_bytes(b"thumbnail")
     video_storage.original_paths[video.id] = original_path
+    video_storage.variant_paths[(video.id, "original_h264")] = original_h264_path
     video_storage.variant_paths[(video.id, "low_h264")] = stream_path
     video_storage.thumbnail_paths[video.id] = thumbnail_path
     app.dependency_overrides[get_video_repository] = lambda: video_repository
@@ -352,6 +1003,20 @@ def test_video_download_stream_and_thumbnail_respect_visibility(
     assert response.status_code == 200
     assert response.content == b"stream-video"
     assert response.headers["content-type"].startswith("video/mp4")
+
+    response = client.get(f"/clip/{video.id}")
+
+    assert response.status_code == 200
+    assert response.content == b"original-h264-video"
+    assert response.headers["content-type"].startswith("video/mp4")
+    assert response.headers["content-disposition"].startswith("inline;")
+
+    response = client.get(f"/clip/{video.id}/h264")
+
+    assert response.status_code == 200
+    assert response.content == b"stream-video"
+    assert response.headers["content-type"].startswith("video/mp4")
+    assert response.headers["content-disposition"].startswith("inline;")
 
     response = client.get(f"/videos/{video.id}/stream?variant_type=original")
 
@@ -422,6 +1087,10 @@ def test_registered_only_video_files_require_login(
 
     assert response.status_code == 403
 
+    response = client.get(f"/clip/{video.id}")
+
+    assert response.status_code == 403
+
     app.dependency_overrides[get_optional_current_user] = lambda: user
     response = client.get(f"/videos/{video.id}/download")
 
@@ -429,7 +1098,32 @@ def test_registered_only_video_files_require_login(
 
 
 @pytest.mark.http
-def test_patch_video_updates_metadata_and_sets_edited(
+def test_clip_link_requires_ready_video(
+    app,
+    client,
+    tmp_path,
+    video_factory,
+    video_repository,
+    video_storage,
+) -> None:
+    video = video_repository.add(
+        video_factory(processing_status=VideoProcessingStatus.PENDING)
+    )
+    original_path = tmp_path / "original.mp4"
+    original_path.write_bytes(b"original-video")
+    video_storage.original_paths[video.id] = original_path
+    app.dependency_overrides[get_video_repository] = lambda: video_repository
+    app.dependency_overrides[get_video_storage] = lambda: video_storage
+    app.dependency_overrides[get_optional_current_user] = lambda: None
+
+    response = client.get(f"/clip/{video.id}")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Video is not ready"
+
+
+@pytest.mark.http
+def test_patch_video_updates_metadata_and_only_sets_edited_when_requested(
     app,
     client,
     user_factory,
@@ -450,8 +1144,67 @@ def test_patch_video_updates_metadata_and_sets_edited(
     body = response.json()
     assert body["title"] == "New title"
     assert body["is_registered_only"] is True
+    assert body["edited"] is False
+    assert body["edited_at"] is None
+
+    response = client.patch(
+        f"/videos/{video.id}",
+        json={"edited": True},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
     assert body["edited"] is True
-    assert body["edited_at"] is not None
+    assert body["edited_at"] is None
+
+    source_created_at = "2026-07-07T18:22:10Z"
+    response = client.patch(
+        f"/videos/{video.id}",
+        json={"source_created_at": source_created_at},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source_created_at"] == "2026-07-07T18:22:10Z"
+    assert video_repository.updated[-1][1]["source_created_at_set"] is True
+
+
+@pytest.mark.http
+def test_patch_video_replaces_tags_independently_from_categories(
+    app,
+    client,
+    user_factory,
+    video_factory,
+    video_repository,
+) -> None:
+    owner = user_factory()
+    category = make_video_category(name="Speedrun")
+    boss_tag = video_repository.add_tag(make_video_tag(name="boss"))
+    clip_tag = video_repository.add_tag(make_video_tag(name="clip"))
+    video = video_repository.add(
+        video_factory(
+            owner_id=owner.id,
+            categories=[category],
+            tags=[make_video_tag(name="old")],
+        )
+    )
+    app.dependency_overrides[get_video_repository] = lambda: video_repository
+    app.dependency_overrides[get_current_user] = lambda: owner
+
+    response = client.patch(
+        f"/videos/{video.id}",
+        json={"tag_ids": [str(boss_tag.id), str(clip_tag.id), str(boss_tag.id)]},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [tag["name"] for tag in body["tags"]] == ["boss", "clip"]
+    assert [category["id"] for category in body["categories"]] == [str(category.id)]
+    assert video_repository.updated[-1][1]["tag_ids"] == [
+        boss_tag.id,
+        clip_tag.id,
+    ]
+    assert video_repository.updated[-1][1]["category_ids"] is None
 
 
 @pytest.mark.http
@@ -574,18 +1327,20 @@ def test_favorite_routes_and_my_favorites(
     app.dependency_overrides[get_video_repository] = lambda: video_repository
     app.dependency_overrides[get_current_user] = lambda: user
 
-    response = client.post(f"/videos/{video.id}/favorite")
+    response = client.post(f"/interactions/videos/{video.id}/favorite")
 
     assert response.status_code == 204
     assert video_repository.is_favorite(video.id, user.id) is True
 
-    response = client.get("/users/me/video-favorites")
+    response = client.get("/interactions/me/video-favorites")
 
     assert response.status_code == 200
     assert response.json()["total"] == 1
     assert response.json()["items"][0]["id"] == str(video.id)
+    assert response.json()["items"][0]["download_url"] == f"/videos/{video.id}/download"
+    assert response.json()["items"][0]["is_favorite"] is True
 
-    response = client.delete(f"/videos/{video.id}/favorite")
+    response = client.delete(f"/interactions/videos/{video.id}/favorite")
 
     assert response.status_code == 204
     assert video_repository.is_favorite(video.id, user.id) is False
@@ -606,7 +1361,7 @@ def test_reaction_routes_set_list_and_delete_reaction(
     app.dependency_overrides[get_optional_current_user] = lambda: user
 
     response = client.post(
-        f"/videos/{video.id}/reactions",
+        f"/interactions/videos/{video.id}/reactions",
         json={"reaction_type": "🔥"},
     )
 
@@ -614,20 +1369,20 @@ def test_reaction_routes_set_list_and_delete_reaction(
     assert response.json()["reaction_type"] == "🔥"
 
     response = client.post(
-        f"/videos/{video.id}/reactions",
+        f"/interactions/videos/{video.id}/reactions",
         json={"reaction_type": "😂"},
     )
 
     assert response.status_code == 200
 
     response = client.post(
-        f"/videos/{video.id}/reactions",
+        f"/interactions/videos/{video.id}/reactions",
         json={"reaction_type": "😮"},
     )
 
     assert response.status_code == 409
 
-    response = client.get(f"/videos/{video.id}/reactions")
+    response = client.get(f"/interactions/videos/{video.id}/reactions")
 
     assert response.status_code == 200
     assert response.json() == [
@@ -635,7 +1390,7 @@ def test_reaction_routes_set_list_and_delete_reaction(
         {"type": "😂", "count": 1},
     ]
 
-    response = client.delete(f"/videos/{video.id}/reactions")
+    response = client.delete(f"/interactions/videos/{video.id}/reactions")
 
     assert response.status_code == 204
     assert video_repository.get_reaction_counts(video.id) == {}

@@ -40,7 +40,10 @@ class LocalVideoStorage(VideoStorage):
                 while chunk := file.read(self.chunk_size):
                     bytes_written += len(chunk)
                     if self._is_too_large(bytes_written):
-                        raise VideoFileTooLargeError()
+                        raise VideoFileTooLargeError(
+                            size_bytes=bytes_written,
+                            limit_bytes=settings.max_video_size_bytes,
+                        )
                     target.write(chunk)
 
             if bytes_written == 0:

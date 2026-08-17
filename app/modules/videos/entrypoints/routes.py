@@ -1,6 +1,6 @@
 import hashlib
 import json
-import logging
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import (
@@ -35,29 +35,32 @@ from app.modules.videos.application.errors import (
     VideoUnsupportedMimeTypeError,
     VideoUploadError,
 )
-from app.modules.videos.application.favorite_video import FavoriteVideo
 from app.modules.videos.application.get_video import GetVideo
 from app.modules.videos.application.list_videos import ListVideos, ListVideosQuery
 from app.modules.videos.application.react_to_video import ReactToVideo
 from app.modules.videos.application.upload_video import UploadVideo, UploadVideoCommand
 from app.modules.videos.application.update_video import UpdateVideo, UpdateVideoCommand
 from app.modules.videos.domain.ports import (
+    VIDEO_LIST_DEFAULT_SORT_BY,
+    VIDEO_LIST_DEFAULT_SORT_DIRECTION,
+    VIDEO_LIST_SORT_DIRECTIONS,
+    VIDEO_LIST_SORT_FIELDS,
     VideoProcessingQueue,
     VideoRepository,
     VideoStorage,
 )
-from app.modules.videos.domain.video import VideoOwner, VideoProcessingStatus, VideoVariantType
+from app.modules.videos.domain.video import (
+    VideoOwner,
+    VideoProcessingStatus,
+    VideoVariantType,
+)
 from app.modules.videos.entrypoints.schemas import (
     VideoDetailResponse,
     VideoListResponse,
-    VideoReactionCountResponse,
-    VideoReactionRequest,
-    VideoReactionResponse,
     VideoUpdateRequest,
 )
 from app.modules.videos.wiring import (
     get_delete_video,
-    get_favorite_video,
     get_get_video,
     get_list_videos,
     get_react_to_video,
@@ -68,13 +71,15 @@ from app.modules.videos.wiring import (
     get_video_storage,
 )
 from app.shared.infrastructure.idempotency import IdempotencyRepository
+from app.shared.infrastructure.logging import get_logger
 from app.shared.wiring import get_idempotency_repository
 from config.settings import settings
 
 
 router = APIRouter(tags=["videos"])
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 VIDEO_UPLOAD_IDEMPOTENCY_SCOPE = "videos.upload"
+VIDEO_FILTER_DATE_FORMAT = "%d/%m/%Y"
 
 
 def _fields_set(request: VideoUpdateRequest) -> set[str]:
@@ -111,8 +116,12 @@ def _map_video_error(error: Exception) -> HTTPException:
 def _map_video_upload_error(error: VideoUploadError) -> HTTPException:
     if isinstance(error, VideoFileTooLargeError):
         return HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="Video file is too large",
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail={
+                "message": "Video file is too large",
+                "size_bytes": error.size_bytes,
+                "limit_bytes": error.limit_bytes,
+            },
         )
     if isinstance(error, VideoDurationTooLongError):
         return HTTPException(
@@ -136,15 +145,15 @@ def _map_video_upload_error(error: VideoUploadError) -> HTTPException:
     )
 
 
-def _normalize_tags(tags: list[str]) -> list[str]:
-    normalized_tags = [tag.strip() for tag in tags if tag.strip()]
-    if len(normalized_tags) > settings.max_video_tags:
+def _normalize_tag_ids(tag_ids: list[UUID]) -> list[UUID]:
+    normalized_tag_ids = list(dict.fromkeys(tag_ids))
+    if len(normalized_tag_ids) > settings.max_video_tags:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Too many tags",
         )
 
-    return normalized_tags
+    return normalized_tag_ids
 
 
 def _normalize_required_text(value: str, field_name: str) -> str:
@@ -165,6 +174,68 @@ def _normalize_optional_text(value: str | None) -> str:
     return value.strip()
 
 
+def _parse_video_filter_date(value: str | None, field_name: str):
+    if value is None:
+        return None
+
+    text = value.strip()
+    if not text:
+        return None
+
+    try:
+        return datetime.strptime(text, VIDEO_FILTER_DATE_FORMAT).date()
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"{field_name} must use DD/MM/YYYY format",
+        )
+
+
+def _resolve_video_date_filters(
+    *,
+    created_date: str | None,
+    created_from: str | None,
+    created_to: str | None,
+):
+    exact_date = _parse_video_filter_date(created_date, "created_date")
+    from_date = _parse_video_filter_date(created_from, "created_from")
+    to_date = _parse_video_filter_date(created_to, "created_to")
+
+    if exact_date is not None and (from_date is not None or to_date is not None):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="created_date cannot be combined with created_from or created_to",
+        )
+
+    if exact_date is not None:
+        return exact_date, exact_date
+
+    if from_date is not None and to_date is not None and from_date > to_date:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="created_from cannot be after created_to",
+        )
+
+    return from_date, to_date
+
+
+def _resolve_video_sort(sort_by: str, sort_direction: str) -> tuple[str, str]:
+    normalized_sort_by = sort_by.strip()
+    normalized_sort_direction = sort_direction.strip().lower()
+    if normalized_sort_by not in VIDEO_LIST_SORT_FIELDS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"sort_by must be one of: {', '.join(VIDEO_LIST_SORT_FIELDS)}",
+        )
+    if normalized_sort_direction not in VIDEO_LIST_SORT_DIRECTIONS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="sort_direction must be asc or desc",
+        )
+
+    return normalized_sort_by, normalized_sort_direction
+
+
 def _ensure_file_exists(path) -> None:
     if path is None or not path.exists() or not path.is_file():
         raise HTTPException(
@@ -179,16 +250,22 @@ async def _video_upload_request_hash(
     title: str,
     description: str,
     is_registered_only: bool,
+    edited: bool,
+    source_created_at: datetime | None,
     category_ids: list[UUID],
-    tags: list[str],
+    tag_ids: list[UUID],
 ) -> str:
     digest = hashlib.sha256()
     metadata = {
         "title": title,
         "description": description,
         "is_registered_only": is_registered_only,
+        "edited": edited,
+        "source_created_at": (
+            source_created_at.isoformat() if source_created_at is not None else None
+        ),
         "category_ids": sorted(str(category_id) for category_id in category_ids),
-        "tags": sorted(tags),
+        "tag_ids": sorted(str(tag_id) for tag_id in tag_ids),
         "filename": file.filename or "video",
         "content_type": file.content_type,
     }
@@ -291,8 +368,10 @@ async def upload_video(
     title: str = Form(..., min_length=1, max_length=255),
     description: str | None = Form(default=None, max_length=5000),
     is_registered_only: bool = Form(default=False),
+    edited: bool = Form(default=False),
+    source_created_at: datetime | None = Form(default=None),
     category_ids: list[UUID] = Form(default=[]),
-    tags: list[str] = Form(default=[]),
+    tag_ids: list[UUID] = Form(default=[]),
     current_user: User = Depends(get_current_user),
     upload_video_use_case: UploadVideo = Depends(get_upload_video),
     video_processing_queue: VideoProcessingQueue = Depends(get_video_processing_queue),
@@ -305,15 +384,17 @@ async def upload_video(
     upload_size = getattr(file, "size", None)
     normalized_title = _normalize_required_text(title, "title")
     normalized_description = _normalize_optional_text(description)
-    normalized_tags = _normalize_tags(tags)
+    normalized_tag_ids = _normalize_tag_ids(tag_ids)
 
     request_hash = await _video_upload_request_hash(
         file=file,
         title=normalized_title,
         description=normalized_description,
         is_registered_only=is_registered_only,
+        edited=edited,
+        source_created_at=source_created_at,
         category_ids=category_ids,
-        tags=normalized_tags,
+        tag_ids=normalized_tag_ids,
     )
     idempotency_record_or_response = _get_or_start_idempotency_record(
         idempotency_key=idempotency_key,
@@ -337,8 +418,10 @@ async def upload_video(
                 content_type=file.content_type,
                 file=file.file,
                 is_registered_only=is_registered_only,
+                edited=edited,
+                source_created_at=source_created_at,
                 category_ids=category_ids,
-                tags=normalized_tags,
+                tag_ids=normalized_tag_ids,
             )
         )
         video.owner = VideoOwner(
@@ -444,27 +527,68 @@ async def upload_video(
 @router.get("/videos", response_model=VideoListResponse)
 def list_videos(
     title: str | None = Query(default=None),
-    tags: list[str] | None = Query(default=None),
     category_ids: list[UUID] | None = Query(default=None),
+    tag_ids: list[UUID] | None = Query(default=None),
     owner_id: UUID | None = Query(default=None),
+    created_date: str | None = Query(default=None, min_length=10, max_length=10),
+    created_from: str | None = Query(default=None, min_length=10, max_length=10),
+    created_to: str | None = Query(default=None, min_length=10, max_length=10),
+    edited: bool | None = Query(default=None),
+    sort_by: str = Query(default=VIDEO_LIST_DEFAULT_SORT_BY),
+    sort_direction: str = Query(default=VIDEO_LIST_DEFAULT_SORT_DIRECTION),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     current_user: User | None = Depends(get_optional_current_user),
     list_videos_use_case: ListVideos = Depends(get_list_videos),
+    react_to_video: ReactToVideo = Depends(get_react_to_video),
+    video_repository: VideoRepository = Depends(get_video_repository),
 ) -> VideoListResponse:
+    resolved_created_from, resolved_created_to = _resolve_video_date_filters(
+        created_date=created_date,
+        created_from=created_from,
+        created_to=created_to,
+    )
+    resolved_sort_by, resolved_sort_direction = _resolve_video_sort(
+        sort_by,
+        sort_direction,
+    )
     result = list_videos_use_case.execute(
         ListVideosQuery(
             title=title,
-            tags=tags,
             category_ids=category_ids,
+            tag_ids=tag_ids,
             owner_id=owner_id,
+            created_from=resolved_created_from,
+            created_to=resolved_created_to,
+            edited=edited,
+            sort_by=resolved_sort_by,
+            sort_direction=resolved_sort_direction,
             limit=limit,
             offset=offset,
         ),
         current_user,
     )
 
-    return VideoListResponse.from_result(result, limit=limit, offset=offset)
+    favorites_by_video_id = {
+        video.id: (
+            current_user is not None
+            and video_repository.is_favorite(video.id, current_user.id)
+        )
+        for video in result.items
+    }
+    reaction_counts_by_video_id = {
+        video.id: react_to_video.get_counts(video.id, current_user)
+        for video in result.items
+    }
+
+    return VideoListResponse.from_result(
+        result,
+        limit=limit,
+        offset=offset,
+        current_user=current_user,
+        favorites_by_video_id=favorites_by_video_id,
+        reaction_counts_by_video_id=reaction_counts_by_video_id,
+    )
 
 
 @router.get("/videos/{video_id}", response_model=VideoDetailResponse)
@@ -554,6 +678,64 @@ def stream_video(
     )
 
 
+def _clip_video_response(
+    video_id: UUID,
+    current_user: User | None,
+    get_video_use_case: GetVideo,
+    video_storage: VideoStorage,
+    *,
+    prefer_original_h264: bool = True,
+) -> FileResponse:
+    video = _get_accessible_video(video_id, current_user, get_video_use_case)
+    if video.processing_status != VideoProcessingStatus.READY:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Video is not ready",
+        )
+
+    variant_path = (
+        video_storage.get_variant_path(video_id, VideoVariantType.ORIGINAL_H264)
+        if prefer_original_h264
+        else None
+    )
+    if variant_path is None:
+        variant_path = video_storage.get_variant_path(video_id, VideoVariantType.LOW_H264)
+    _ensure_file_exists(variant_path)
+
+    return FileResponse(
+        variant_path,
+        media_type="video/mp4",
+        filename=f"{video_id}.mp4",
+        content_disposition_type="inline",
+    )
+
+
+@router.get("/clip/{video_id}")
+def clip_video(
+    video_id: UUID,
+    current_user: User | None = Depends(get_optional_current_user),
+    get_video_use_case: GetVideo = Depends(get_get_video),
+    video_storage: VideoStorage = Depends(get_video_storage),
+) -> FileResponse:
+    return _clip_video_response(video_id, current_user, get_video_use_case, video_storage)
+
+
+@router.get("/clip/{video_id}/h264")
+def clip_video_h264(
+    video_id: UUID,
+    current_user: User | None = Depends(get_optional_current_user),
+    get_video_use_case: GetVideo = Depends(get_get_video),
+    video_storage: VideoStorage = Depends(get_video_storage),
+) -> FileResponse:
+    return _clip_video_response(
+        video_id,
+        current_user,
+        get_video_use_case,
+        video_storage,
+        prefer_original_h264=False,
+    )
+
+
 @router.get("/videos/{video_id}/thumbnail")
 def get_video_thumbnail(
     video_id: UUID,
@@ -597,10 +779,17 @@ def update_video(
                     if "is_registered_only" in fields_set
                     else None
                 ),
+                edited=request.edited if "edited" in fields_set else None,
                 category_ids=(
                     request.category_ids if "category_ids" in fields_set else None
                 ),
-                tags=request.tags if "tags" in fields_set else None,
+                tag_ids=request.tag_ids if "tag_ids" in fields_set else None,
+                source_created_at=(
+                    request.source_created_at
+                    if "source_created_at" in fields_set
+                    else None
+                ),
+                source_created_at_set="source_created_at" in fields_set,
             ),
             current_user,
         )
@@ -690,97 +879,3 @@ def retry_video_processing(
         is_favorite=False,
         reaction_counts={},
     )
-
-
-@router.post("/videos/{video_id}/favorite", status_code=status.HTTP_204_NO_CONTENT)
-def favorite_video(
-    video_id: UUID,
-    current_user: User = Depends(get_current_user),
-    favorite_video_use_case: FavoriteVideo = Depends(get_favorite_video),
-) -> Response:
-    try:
-        favorite_video_use_case.add(video_id, current_user)
-    except (VideoNotFoundError, VideoPermissionError) as error:
-        raise _map_video_error(error)
-
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@router.delete("/videos/{video_id}/favorite", status_code=status.HTTP_204_NO_CONTENT)
-def unfavorite_video(
-    video_id: UUID,
-    current_user: User = Depends(get_current_user),
-    favorite_video_use_case: FavoriteVideo = Depends(get_favorite_video),
-) -> Response:
-    try:
-        favorite_video_use_case.remove(video_id, current_user)
-    except (VideoNotFoundError, VideoPermissionError) as error:
-        raise _map_video_error(error)
-
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@router.get("/users/me/video-favorites", response_model=VideoListResponse)
-def list_my_video_favorites(
-    limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
-    current_user: User = Depends(get_current_user),
-    favorite_video_use_case: FavoriteVideo = Depends(get_favorite_video),
-) -> VideoListResponse:
-    result = favorite_video_use_case.list_user_favorites(
-        current_user,
-        limit=limit,
-        offset=offset,
-    )
-
-    return VideoListResponse.from_result(result, limit=limit, offset=offset)
-
-
-@router.get("/videos/{video_id}/reactions", response_model=list[VideoReactionCountResponse])
-def get_video_reactions(
-    video_id: UUID,
-    current_user: User | None = Depends(get_optional_current_user),
-    react_to_video: ReactToVideo = Depends(get_react_to_video),
-) -> list[VideoReactionCountResponse]:
-    try:
-        reaction_counts = react_to_video.get_counts(video_id, current_user)
-    except (VideoNotFoundError, VideoPermissionError) as error:
-        raise _map_video_error(error)
-
-    return [
-        VideoReactionCountResponse(type=reaction_type, count=count)
-        for reaction_type, count in sorted(reaction_counts.items())
-    ]
-
-
-@router.post("/videos/{video_id}/reactions", response_model=VideoReactionResponse)
-def react_to_video_route(
-    video_id: UUID,
-    request: VideoReactionRequest,
-    current_user: User = Depends(get_current_user),
-    react_to_video: ReactToVideo = Depends(get_react_to_video),
-) -> VideoReactionResponse:
-    try:
-        reaction = react_to_video.set(
-            video_id,
-            request.reaction_type,
-            current_user,
-        )
-    except (VideoNotFoundError, VideoPermissionError, VideoReactionLimitError) as error:
-        raise _map_video_error(error)
-
-    return VideoReactionResponse.from_domain(reaction)
-
-
-@router.delete("/videos/{video_id}/reactions", status_code=status.HTTP_204_NO_CONTENT)
-def delete_video_reaction(
-    video_id: UUID,
-    current_user: User = Depends(get_current_user),
-    react_to_video: ReactToVideo = Depends(get_react_to_video),
-) -> Response:
-    try:
-        react_to_video.remove(video_id, current_user)
-    except (VideoNotFoundError, VideoPermissionError) as error:
-        raise _map_video_error(error)
-
-    return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -10,11 +10,14 @@ from tests.fakes import (
     FakeIdempotencyRepository,
     FakePasswordHasher,
     FakeSteamClient,
+    FakeSteamGridDbClient,
     FakeSteamGameRepository,
+    FakeVideoCategoryRepository,
     FakeVideoProcessingQueue,
     FakeUserRepository,
     FakeVideoRepository,
     FakeVideoStorage,
+    FakeVideoTagRepository,
     FakeVideoTranscoder,
 )
 
@@ -50,6 +53,16 @@ def video_repository():
 
 
 @pytest.fixture
+def video_category_repository():
+    return FakeVideoCategoryRepository()
+
+
+@pytest.fixture
+def video_tag_repository():
+    return FakeVideoTagRepository()
+
+
+@pytest.fixture
 def video_storage():
     return FakeVideoStorage()
 
@@ -82,6 +95,11 @@ def access_token_service():
 @pytest.fixture
 def steam_client():
     return FakeSteamClient()
+
+
+@pytest.fixture
+def steamgriddb_client():
+    return FakeSteamGridDbClient()
 
 
 @pytest.fixture

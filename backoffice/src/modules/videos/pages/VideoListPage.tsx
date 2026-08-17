@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Trash2 } from "lucide-react";
+import { RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { useAuth } from "@/modules/auth/AuthContext";
 import { backofficeService } from "@/shared/api/backofficeService";
-import { ProcessingStatus } from "@/shared/types/backoffice";
+import { ProcessingStatus, VideoListFilters } from "@/shared/types/backoffice";
 import { Badge } from "@/shared/ui/Badge";
 import { EmptyState } from "@/shared/ui/EmptyState";
 import { PageHeader } from "@/shared/ui/PageHeader";
@@ -22,13 +22,17 @@ export function VideoListPage() {
   const [owner, setOwner] = useState("");
   const [status, setStatus] = useState<ProcessingStatus | "">("");
   const [visibility, setVisibility] = useState<"public" | "registered" | "">("");
+  const [sortBy, setSortBy] = useState<NonNullable<VideoListFilters["sortBy"]>>("created_at");
+  const [sortDirection, setSortDirection] = useState<NonNullable<VideoListFilters["sortDirection"]>>("desc");
   const [offset, setOffset] = useState(0);
 
-  const filters = {
+  const filters: VideoListFilters = {
     title,
     owner,
     status: status || undefined,
     visibility: visibility || undefined,
+    sortBy,
+    sortDirection,
     limit: PAGE_SIZE,
     offset
   };
@@ -41,6 +45,15 @@ export function VideoListPage() {
   const deleteVideo = useMutation({
     mutationFn: backofficeService.deleteVideo,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["videos"] })
+  });
+  const retryVideo = useMutation({
+    mutationFn: backofficeService.retryVideo,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["videos"] });
+      queryClient.invalidateQueries({ queryKey: ["queue-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["worker-events"] });
+      queryClient.invalidateQueries({ queryKey: ["audit"] });
+    }
   });
 
   function resetOffset() {
@@ -101,6 +114,32 @@ export function VideoListPage() {
             <option value="public">public</option>
             <option value="registered">registered</option>
           </select>
+          <select
+            aria-label="Ordenar por"
+            onChange={(event) => {
+              setSortBy(event.target.value as NonNullable<VideoListFilters["sortBy"]>);
+              resetOffset();
+            }}
+            value={sortBy}
+          >
+            <option value="created_at">Alta</option>
+            <option value="source_created_at">Fecha origen</option>
+            <option value="updated_at">Actualizacion</option>
+            <option value="title">Titulo</option>
+            <option value="favorite_count">Favoritos</option>
+            <option value="duration_seconds">Duracion</option>
+          </select>
+          <select
+            aria-label="Direccion de orden"
+            onChange={(event) => {
+              setSortDirection(event.target.value as NonNullable<VideoListFilters["sortDirection"]>);
+              resetOffset();
+            }}
+            value={sortDirection}
+          >
+            <option value="desc">Descendente</option>
+            <option value="asc">Ascendente</option>
+          </select>
         </div>
         <QueryPanelState
           errorDescription="No se pudo recuperar el listado administrativo de videos."
@@ -137,15 +176,32 @@ export function VideoListPage() {
                       Abrir
                     </Link>
                     {isSuperAdmin ? (
-                      <button
-                        className="button ghost"
-                        disabled={deleteVideo.isPending}
-                        onClick={() => deleteVideo.mutate(video.id)}
-                        title="Borrar video"
-                        type="button"
-                      >
-                        <Trash2 size={15} />
-                      </button>
+                      <>
+                        {video.processingStatus === "processing" ? (
+                          <button
+                            className="button ghost"
+                            disabled={retryVideo.isPending}
+                            onClick={() => {
+                              if (window.confirm("Reiniciar el procesado de este video?")) {
+                                retryVideo.mutate(video.id);
+                              }
+                            }}
+                            title="Reiniciar procesado"
+                            type="button"
+                          >
+                            <RotateCcw size={15} />
+                          </button>
+                        ) : null}
+                        <button
+                          className="button ghost"
+                          disabled={deleteVideo.isPending}
+                          onClick={() => deleteVideo.mutate(video.id)}
+                          title="Borrar video"
+                          type="button"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </>
                     ) : null}
                   </td>
                 </tr>

@@ -1,4 +1,6 @@
+from datetime import datetime, timezone
 from io import BytesIO
+from uuid import uuid4
 
 import pytest
 
@@ -14,21 +16,32 @@ from app.modules.videos.application.process_video import ProcessVideo
 from app.modules.videos.application.react_to_video import ReactToVideo
 from app.modules.videos.application.upload_video import UploadVideo, UploadVideoCommand
 from app.modules.videos.application.update_video import UpdateVideo, UpdateVideoCommand
+from app.modules.videos.domain.video import VideoProcessingResult
 from tests.fakes import FakeVideoRepository
 
 
 @pytest.mark.unit
-def test_list_videos_applies_visibility_filters_and_popularity_order(
+def test_list_videos_applies_visibility_filters_and_created_at_desc_order(
     user_factory,
     video_factory,
     video_repository,
 ) -> None:
     owner = user_factory()
-    public_low = video_repository.add(
-        video_factory(owner_id=owner.id, title="Alpha", favorite_count=1)
+    older = video_repository.add(
+        video_factory(
+            owner_id=owner.id,
+            title="Alpha older",
+            favorite_count=5,
+            created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        )
     )
-    public_high = video_repository.add(
-        video_factory(owner_id=owner.id, title="Alpha boss", favorite_count=5)
+    newer = video_repository.add(
+        video_factory(
+            owner_id=owner.id,
+            title="Alpha newer",
+            favorite_count=1,
+            created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+        )
     )
     video_repository.add(
         video_factory(owner_id=owner.id, title="Alpha private", is_registered_only=True)
@@ -41,11 +54,58 @@ def test_list_videos_applies_visibility_filters_and_popularity_order(
     )
 
     assert result.total == 2
-    assert result.items == [public_high, public_low]
+    assert result.items == [newer, older]
 
 
 @pytest.mark.unit
-def test_update_video_marks_video_as_edited_for_owner(
+def test_list_videos_orders_by_source_created_at_in_requested_direction(
+    video_factory,
+    video_repository,
+) -> None:
+    oldest_source = video_repository.add(
+        video_factory(
+            title="Oldest source",
+            created_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
+            source_created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        )
+    )
+    newest_source = video_repository.add(
+        video_factory(
+            title="Newest source",
+            created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            source_created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        )
+    )
+    missing_source = video_repository.add(
+        video_factory(
+            title="Missing source",
+            created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+            source_created_at=None,
+        )
+    )
+    list_videos = ListVideos(video_repository)
+
+    descending_result = list_videos.execute(
+        ListVideosQuery(
+            sort_by="source_created_at",
+            sort_direction="desc",
+        ),
+        current_user=None,
+    )
+    ascending_result = list_videos.execute(
+        ListVideosQuery(
+            sort_by="source_created_at",
+            sort_direction="asc",
+        ),
+        current_user=None,
+    )
+
+    assert descending_result.items == [newest_source, oldest_source, missing_source]
+    assert ascending_result.items == [oldest_source, newest_source, missing_source]
+
+
+@pytest.mark.unit
+def test_update_video_only_sets_edited_when_requested_by_owner(
     user_factory,
     video_factory,
     video_repository,
@@ -60,8 +120,16 @@ def test_update_video_marks_video_as_edited_for_owner(
     )
 
     assert updated.title == "New title"
+    assert updated.edited is False
+    assert updated.edited_at is None
+
+    updated = update_video.execute(
+        UpdateVideoCommand(video_id=video.id, edited=True),
+        owner,
+    )
+
     assert updated.edited is True
-    assert updated.edited_at is not None
+    assert updated.edited_at is None
 
 
 @pytest.mark.unit
@@ -178,6 +246,7 @@ def test_upload_video_saves_file_and_creates_video(user_factory, video_storage) 
     user = user_factory()
     video_repository = FakeVideoRepository()
     upload_video = UploadVideo(video_repository, video_storage)
+    source_created_at = datetime(2026, 7, 7, 18, 22, 10, tzinfo=timezone.utc)
 
     video = upload_video.execute(
         UploadVideoCommand(
@@ -187,13 +256,18 @@ def test_upload_video_saves_file_and_creates_video(user_factory, video_storage) 
             original_filename="clip.mp4",
             content_type="video/mp4",
             file=BytesIO(b"video-bytes"),
-            tags=["boss"],
+            edited=True,
+            source_created_at=source_created_at,
+            tag_ids=[uuid4()],
         )
     )
 
     assert video.owner_id == user.id
     assert video.original_filename == "clip.mp4"
+    assert video.edited is True
+    assert video.source_created_at == source_created_at
     assert video_repository.created[0].id == video.id
+    assert video_repository.created[0].source_created_at == source_created_at
     assert video_storage.saved[0]["video_id"] == video.id
     assert video_storage.saved[0]["content"] == b"video-bytes"
 
@@ -213,8 +287,59 @@ def test_process_video_marks_video_ready_with_low_variant(
     assert processed.width == 1920
     assert processed.height == 1080
     assert processed.duration_seconds == 12.5
+    assert processed.source_created_at is None
     assert [variant.codec for variant in processed.variants] == ["h264"]
     assert video_transcoder.transcoded == [video.id]
+
+
+@pytest.mark.unit
+def test_process_video_preserves_existing_source_created_at(
+    video_factory,
+    video_transcoder,
+) -> None:
+    source_created_at = datetime(2026, 7, 7, 18, 22, 10, tzinfo=timezone.utc)
+    video_repository = FakeVideoRepository()
+    video = video_repository.add(
+        video_factory(
+            source_created_at=source_created_at,
+        )
+    )
+    process_video = ProcessVideo(video_repository, video_transcoder)
+
+    processed = process_video.execute(video.id)
+
+    assert processed.source_created_at == source_created_at
+
+
+@pytest.mark.unit
+def test_process_video_prefers_metadata_source_created_at(
+    video_factory,
+    video_transcoder,
+) -> None:
+    user_source_created_at = datetime(2026, 7, 7, 18, 22, 10, tzinfo=timezone.utc)
+    metadata_source_created_at = datetime(2026, 8, 8, 10, 12, 30, tzinfo=timezone.utc)
+    video_repository = FakeVideoRepository()
+    video = video_repository.add(
+        video_factory(
+            source_created_at=user_source_created_at,
+        )
+    )
+    default_result = video_transcoder.transcode(video.id)
+    video_transcoder.transcoded.clear()
+    video_transcoder.result = VideoProcessingResult(
+        width=default_result.width,
+        height=default_result.height,
+        aspect_ratio=default_result.aspect_ratio,
+        duration_seconds=default_result.duration_seconds,
+        source_created_at=metadata_source_created_at,
+        thumbnail_path=default_result.thumbnail_path,
+        variants=default_result.variants,
+    )
+    process_video = ProcessVideo(video_repository, video_transcoder)
+
+    processed = process_video.execute(video.id)
+
+    assert processed.source_created_at == metadata_source_created_at
 
 
 @pytest.mark.unit

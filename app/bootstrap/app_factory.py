@@ -1,16 +1,20 @@
-import logging
 from time import perf_counter
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 
 from app.modules.admin.entrypoints.routes import router as admin_router
 from app.modules.auth.entrypoints.routes import router as auth_router
 from app.modules.steam.entrypoints.routes import router as steam_router
 from app.modules.users.entrypoints.routes import router as users_router
+from app.modules.videos.entrypoints.catalog_routes import router as catalog_router
+from app.modules.videos.entrypoints.interactions_routes import router as interactions_router
 from app.modules.videos.entrypoints.routes import router as videos_router
+from app.modules.videos.entrypoints.tag_routes import router as tags_router
 from app.shared.infrastructure.logging import (
     configure_logging,
+    get_logger,
     new_request_id,
     reset_auth_status,
     reset_client_ip,
@@ -30,7 +34,7 @@ from app.shared.infrastructure.logging import (
 from config.settings import settings
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _client_ip(request: Request) -> str:
@@ -72,7 +76,25 @@ def _restore_authenticated_user_context(request: Request) -> None:
 
 def create_app() -> FastAPI:
     configure_logging()
-    app = FastAPI(title="SpiderShare")
+    app = FastAPI(
+        title="SpiderShare",
+        version=settings.app_version,
+        description="API for cliponomicon videos and clips.",
+        root_path=settings.app_root_path,
+        contact={
+            "name": "SrSpooderman",
+            "url": "https://github.com/SrSpooderman",
+        },
+    )
+
+    if settings.cors_allowed_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_allowed_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
     @app.middleware("http")
     async def request_logging_middleware(request: Request, call_next):
@@ -154,5 +176,8 @@ def create_app() -> FastAPI:
     app.include_router(users_router)
     app.include_router(steam_router)
     app.include_router(videos_router)
+    app.include_router(catalog_router)
+    app.include_router(tags_router)
+    app.include_router(interactions_router)
 
     return app

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
@@ -9,15 +11,26 @@ from app.modules.users.domain.user import User, UserCreate, UserRole
 from app.modules.videos.domain.ports import VideoListFilters, VideoListResult
 from app.modules.videos.domain.video import (
     Video,
+    VideoCategory,
+    VideoCategoryCreate,
     VideoCreate,
     VideoProcessingError,
     VideoProcessingResult,
     VideoProcessingStatus,
     VideoReaction,
-    video_popularity_score,
+    VideoTag,
+    VideoTagCreate,
 )
 from app.shared.infrastructure.providers.steam.steam_client import SteamApiError
-from tests.factories import make_steam_game, make_user, make_video, make_video_variant, utc_now
+from tests.factories import (
+    make_steam_game,
+    make_user,
+    make_video,
+    make_video_category,
+    make_video_tag,
+    make_video_variant,
+    utc_now,
+)
 
 
 class FakeUserRepository:
@@ -43,7 +56,13 @@ class FakeUserRepository:
             None,
         )
 
-    def list(self) -> list[User]:
+    def get_by_oidc_subject(self, subject: str) -> User | None:
+        return next(
+            (user for user in self.users.values() if user.oidc_subject == subject),
+            None,
+        )
+
+    def list_users(self) -> list[User]:
         return list(self.users.values())
 
     def create(self, user: UserCreate) -> User:
@@ -55,6 +74,11 @@ class FakeUserRepository:
             avatar_image=user.avatar_image,
             password_hash=user.password_hash,
             ldap=user.ldap,
+            auth_provider=user.auth_provider,
+            oidc_subject=user.oidc_subject,
+            oidc_email=user.oidc_email,
+            oidc_name=user.oidc_name,
+            oidc_groups=user.oidc_groups or [],
             role=user.role,
         )
         return self.add(created_user)
@@ -68,6 +92,9 @@ class FakeUserRepository:
         bio: str | None = None,
         avatar_image: bytes | None = None,
         password_hash: str | None = None,
+        oidc_email: str | None = None,
+        oidc_name: str | None = None,
+        oidc_groups: list[str] | None = None,
         role: str | None = None,
         is_active: bool | None = None,
         last_login_at: datetime | None = None,
@@ -85,6 +112,9 @@ class FakeUserRepository:
             "bio": bio,
             "avatar_image": avatar_image,
             "password_hash": password_hash,
+            "oidc_email": oidc_email,
+            "oidc_name": oidc_name,
+            "oidc_groups": oidc_groups,
             "role": role,
             "is_active": is_active,
             "last_login_at": last_login_at,
@@ -104,6 +134,12 @@ class FakeUserRepository:
             user.avatar_image = avatar_image
         if password_hash is not None:
             user.password_hash = password_hash
+        if oidc_email is not None:
+            user.oidc_email = oidc_email
+        if oidc_name is not None:
+            user.oidc_name = oidc_name
+        if oidc_groups is not None:
+            user.oidc_groups = oidc_groups
         if role is not None:
             user.role = UserRole(role)
         if is_active is not None:
@@ -158,13 +194,20 @@ class FakeVideoRepository:
         self.processing_errors: dict[UUID, list[VideoProcessingError]] = {}
         self.favorites: set[tuple[UUID, UUID]] = set()
         self.reactions: dict[tuple[UUID, UUID, str], VideoReaction] = {}
+        self.tags: dict[UUID, VideoTag] = {}
 
         for video in videos or []:
             self.add(video)
 
     def add(self, video: Video) -> Video:
         self.videos[video.id] = video
+        for tag in video.tags:
+            self.tags[tag.id] = tag
         return video
+
+    def add_tag(self, tag: VideoTag) -> VideoTag:
+        self.tags[tag.id] = tag
+        return tag
 
     def get_by_id(self, video_id: UUID) -> Video | None:
         return self.videos.get(video_id)
@@ -190,6 +233,20 @@ class FakeVideoRepository:
             ]
         if filters.owner_id is not None:
             videos = [video for video in videos if video.owner_id == filters.owner_id]
+        if filters.created_from is not None:
+            videos = [
+                video
+                for video in videos
+                if video.created_at.date() >= filters.created_from
+            ]
+        if filters.created_to is not None:
+            videos = [
+                video
+                for video in videos
+                if video.created_at.date() <= filters.created_to
+            ]
+        if filters.edited is not None:
+            videos = [video for video in videos if video.edited is filters.edited]
         if filters.category_ids:
             category_ids = set(filters.category_ids)
             videos = [
@@ -197,21 +254,28 @@ class FakeVideoRepository:
                 for video in videos
                 if category_ids & {category.id for category in video.categories}
             ]
-        if filters.tags:
-            tag_names = {tag.strip() for tag in filters.tags if tag.strip()}
+        if filters.tag_ids:
+            tag_ids = set(filters.tag_ids)
             videos = [
                 video
                 for video in videos
-                if tag_names & {tag.name for tag in video.tags}
+                if tag_ids & {tag.id for tag in video.tags}
             ]
 
-        videos = sorted(
-            videos,
-            key=lambda video: (video_popularity_score(video), video.created_at),
-            reverse=True,
-        )
+        videos = self._sort_videos(videos, filters)
 
         return VideoListResult(items=videos[offset : offset + limit], total=len(videos))
+
+    def list_by_processing_status(
+        self,
+        statuses: list[str],
+    ) -> list[Video]:
+        status_values = set(statuses)
+        return [
+            video
+            for video in self.videos.values()
+            if video.processing_status.value in status_values
+        ]
 
     def create(self, video: VideoCreate) -> Video:
         self.created.append(video)
@@ -224,6 +288,9 @@ class FakeVideoRepository:
                 description=video.description,
                 original_filename=video.original_filename,
                 is_registered_only=video.is_registered_only,
+                edited=video.edited,
+                source_created_at=video.source_created_at,
+                tags=self._tags_for_ids(video.tag_ids),
             )
         )
 
@@ -270,6 +337,7 @@ class FakeVideoRepository:
             height=result.height,
             aspect_ratio=result.aspect_ratio,
             duration_seconds=result.duration_seconds,
+            source_created_at=result.source_created_at or video.source_created_at,
             thumbnail_path=result.thumbnail_path,
             variants=variants,
             updated_at=now,
@@ -323,6 +391,7 @@ class FakeVideoRepository:
             height=None,
             aspect_ratio=None,
             duration_seconds=None,
+            source_created_at=None,
             thumbnail_path=None,
             variants=[],
         )
@@ -336,8 +405,11 @@ class FakeVideoRepository:
         title: str | None = None,
         description: str | None = None,
         is_registered_only: bool | None = None,
+        edited: bool | None = None,
         category_ids: list[UUID] | None = None,
-        tags: list[str] | None = None,
+        tag_ids: list[UUID] | None = None,
+        source_created_at: datetime | None = None,
+        source_created_at_set: bool = False,
     ) -> Video | None:
         video = self.videos.get(video_id)
         if video is None:
@@ -347,12 +419,15 @@ class FakeVideoRepository:
             "title": title,
             "description": description,
             "is_registered_only": is_registered_only,
+            "edited": edited,
             "category_ids": category_ids,
-            "tags": tags,
+            "tag_ids": tag_ids,
+            "source_created_at": source_created_at,
+            "source_created_at_set": source_created_at_set,
         }
         self.updated.append((video_id, changes))
 
-        edited_at = utc_now()
+        now = utc_now()
         updated_video = replace(
             video,
             title=title if title is not None else video.title,
@@ -362,13 +437,53 @@ class FakeVideoRepository:
                 if is_registered_only is not None
                 else video.is_registered_only
             ),
-            edited=True,
-            edited_at=edited_at,
-            updated_at=edited_at,
+            edited=edited if edited is not None else video.edited,
+            tags=self._tags_for_ids(tag_ids) if tag_ids is not None else video.tags,
+            source_created_at=(
+                source_created_at if source_created_at_set else video.source_created_at
+            ),
+            updated_at=now,
         )
         self.videos[video_id] = updated_video
 
         return updated_video
+
+    def _tags_for_ids(self, tag_ids: list[UUID]) -> list[VideoTag]:
+        tags = []
+        for tag_id in dict.fromkeys(tag_ids):
+            tag = self.tags.get(tag_id)
+            if tag is None:
+                tag = make_video_tag(id=tag_id, name=str(tag_id))
+                self.tags[tag_id] = tag
+            tags.append(tag)
+        return tags
+
+    def _sort_videos(
+        self,
+        videos: list[Video],
+        filters: VideoListFilters,
+    ) -> list[Video]:
+        sortable_values = [
+            (video, getattr(video, filters.sort_by, None))
+            for video in videos
+        ]
+        non_null_values = [
+            (video, value)
+            for video, value in sortable_values
+            if value is not None
+        ]
+        null_values = [video for video, value in sortable_values if value is None]
+        non_null_values = sorted(non_null_values, key=lambda item: item[0].id)
+        ordered_videos = [
+            video
+            for video, _value in sorted(
+                non_null_values,
+                key=lambda item: item[1],
+                reverse=filters.sort_direction == "desc",
+            )
+        ]
+
+        return ordered_videos + sorted(null_values, key=lambda video: video.id)
 
     def delete(self, video_id: UUID) -> bool:
         self.deleted.append(video_id)
@@ -470,6 +585,170 @@ class FakeVideoRepository:
         return counts
 
 
+class FakeVideoCategoryRepository:
+    def __init__(self, categories: list[VideoCategory] | None = None) -> None:
+        self.categories: dict[UUID, VideoCategory] = {}
+        self.created: list[VideoCategoryCreate] = []
+        self.upserted: list[VideoCategoryCreate] = []
+
+        for category in categories or []:
+            self.add(category)
+
+    def add(self, category: VideoCategory) -> VideoCategory:
+        self.categories[category.id] = category
+        return category
+
+    def list(self) -> list[VideoCategory]:
+        return sorted(self.categories.values(), key=lambda category: category.name)
+
+    def search(self, *, name: str | None = None) -> list[VideoCategory]:
+        name_filter = name.lower() if name is not None else None
+        categories = self.categories.values()
+        if name_filter is not None:
+            categories = [
+                category
+                for category in categories
+                if name_filter in category.name.lower()
+            ]
+        return sorted(categories, key=lambda category: category.name)
+
+    def get_by_id(self, category_id: UUID) -> VideoCategory | None:
+        return self.categories.get(category_id)
+
+    def create(self, category: VideoCategoryCreate) -> VideoCategory:
+        self.created.append(category)
+        return self.add(
+            make_video_category(
+                name=category.name,
+                source=category.source,
+                steam_appid=category.steam_appid,
+                steamgriddb_game_id=category.steamgriddb_game_id,
+                thumbnail_vertical_url=category.thumbnail_vertical_url,
+                thumbnail_horizontal_url=category.thumbnail_horizontal_url,
+                thumbnail_vertical_image=category.thumbnail_vertical_image,
+                thumbnail_vertical_content_type=category.thumbnail_vertical_content_type,
+                thumbnail_horizontal_image=category.thumbnail_horizontal_image,
+                thumbnail_horizontal_content_type=category.thumbnail_horizontal_content_type,
+            )
+        )
+
+    def upsert_steam_category(self, category: VideoCategoryCreate) -> VideoCategory:
+        self.upserted.append(category)
+        existing = next(
+            (
+                stored_category
+                for stored_category in self.categories.values()
+                if (
+                    category.steam_appid is not None
+                    and stored_category.steam_appid == category.steam_appid
+                )
+                or (
+                    category.steamgriddb_game_id is not None
+                    and stored_category.steamgriddb_game_id == category.steamgriddb_game_id
+                )
+            ),
+            None,
+        )
+        if existing is not None:
+            updated = make_video_category(
+                id=existing.id,
+                name=category.name,
+                source=category.source,
+                steam_appid=category.steam_appid,
+                steamgriddb_game_id=category.steamgriddb_game_id,
+                thumbnail_vertical_url=category.thumbnail_vertical_url,
+                thumbnail_horizontal_url=category.thumbnail_horizontal_url,
+                thumbnail_vertical_image=category.thumbnail_vertical_image,
+                thumbnail_vertical_content_type=category.thumbnail_vertical_content_type,
+                thumbnail_horizontal_image=category.thumbnail_horizontal_image,
+                thumbnail_horizontal_content_type=category.thumbnail_horizontal_content_type,
+            )
+            self.categories[existing.id] = updated
+            return updated
+
+        return self.create(category)
+
+    def update(self, category_id: UUID, category: VideoCategoryCreate) -> VideoCategory | None:
+        existing = self.categories.get(category_id)
+        if existing is None:
+            return None
+        updated = make_video_category(
+            id=category_id,
+            name=category.name,
+            source=existing.source,
+            steam_appid=existing.steam_appid,
+            steamgriddb_game_id=existing.steamgriddb_game_id,
+            thumbnail_vertical_url=category.thumbnail_vertical_url,
+            thumbnail_horizontal_url=category.thumbnail_horizontal_url,
+            thumbnail_vertical_image=category.thumbnail_vertical_image,
+            thumbnail_vertical_content_type=category.thumbnail_vertical_content_type,
+            thumbnail_horizontal_image=category.thumbnail_horizontal_image,
+            thumbnail_horizontal_content_type=category.thumbnail_horizontal_content_type,
+        )
+        self.categories[category_id] = updated
+        return updated
+
+    def delete(self, category_id: UUID) -> bool:
+        return self.categories.pop(category_id, None) is not None
+
+
+class FakeVideoTagRepository:
+    def __init__(self, tags: list[VideoTag] | None = None) -> None:
+        self.tags: dict[UUID, VideoTag] = {}
+        self.created: list[VideoTagCreate] = []
+
+        for tag in tags or []:
+            self.add(tag)
+
+    def add(self, tag: VideoTag) -> VideoTag:
+        self.tags[tag.id] = tag
+        return tag
+
+    def list(self) -> list[VideoTag]:
+        return sorted(self.tags.values(), key=lambda tag: tag.name)
+
+    def get_by_id(self, tag_id: UUID) -> VideoTag | None:
+        return self.tags.get(tag_id)
+
+    def search(
+        self,
+        *,
+        id: str | None = None,
+        name: str | None = None,
+    ) -> list[VideoTag]:
+        id_filter = id.lower() if id is not None else None
+        name_filter = name.lower() if name is not None else None
+        tags = self.tags.values()
+        if id_filter is not None:
+            tags = [tag for tag in tags if id_filter in str(tag.id).lower()]
+        if name_filter is not None:
+            tags = [tag for tag in tags if name_filter in tag.name.lower()]
+        return sorted(tags, key=lambda tag: tag.name)
+
+    def create(self, tag: VideoTagCreate) -> VideoTag:
+        self.created.append(tag)
+        existing = next(
+            (stored_tag for stored_tag in self.tags.values() if stored_tag.name == tag.name),
+            None,
+        )
+        if existing is not None:
+            return existing
+
+        return self.add(make_video_tag(name=tag.name))
+
+    def update(self, tag_id: UUID, tag: VideoTagCreate) -> VideoTag | None:
+        existing = self.tags.get(tag_id)
+        if existing is None:
+            return None
+
+        updated = make_video_tag(id=tag_id, name=tag.name)
+        self.tags[tag_id] = updated
+        return updated
+
+    def delete(self, tag_id: UUID) -> bool:
+        return self.tags.pop(tag_id, None) is not None
+
+
 class FakeVideoStorage:
     def __init__(
         self,
@@ -553,6 +832,7 @@ class FakeVideoTranscoder:
             height=1080,
             aspect_ratio=VideoAspectRatio.RATIO_16_9,
             duration_seconds=12.5,
+            source_created_at=None,
             thumbnail_path=f"thumbnails/{video_id}/thumbnail.jpg",
             variants=[
                 VideoVariantCreate(
@@ -716,3 +996,55 @@ class FakeSteamClient:
             steam_id_or_vanity,
             {"steamid": steam_id_or_vanity, "game_count": 0, "games": []},
         )
+
+
+class FakeSteamGridDbClient:
+    def __init__(
+        self,
+        *,
+        games_by_search: dict[str, list[dict]] | None = None,
+        games_by_appid: dict[int, dict] | None = None,
+        games_by_id: dict[int, dict] | None = None,
+        grids_by_game_dimensions: dict[tuple[int, str], list[dict]] | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        self.games_by_search = games_by_search or {}
+        self.games_by_appid = games_by_appid or {}
+        self.games_by_id = games_by_id or {}
+        self.grids_by_game_dimensions = grids_by_game_dimensions or {}
+        self.error = error
+        self.search_requests: list[str] = []
+        self.appid_requests: list[int] = []
+        self.game_id_requests: list[int] = []
+        self.grid_requests: list[tuple[int, str, int]] = []
+
+    def search_games(self, term: str) -> list[dict]:
+        if self.error is not None:
+            raise self.error
+        self.search_requests.append(term)
+        return self.games_by_search.get(term, [])
+
+    def get_game_by_steam_appid(self, appid: int) -> dict:
+        if self.error is not None:
+            raise self.error
+        self.appid_requests.append(appid)
+        return self.games_by_appid.get(appid, {})
+
+    def get_game_by_id(self, game_id: int) -> dict:
+        if self.error is not None:
+            raise self.error
+        self.game_id_requests.append(game_id)
+        return self.games_by_id.get(game_id, {})
+
+    def get_grids(
+        self,
+        game_id: int,
+        *,
+        dimensions: str,
+        limit: int = 1,
+        page: int | None = None,
+    ) -> list[dict]:
+        if self.error is not None:
+            raise self.error
+        self.grid_requests.append((game_id, dimensions, limit, page))
+        return self.grids_by_game_dimensions.get((game_id, dimensions), [])

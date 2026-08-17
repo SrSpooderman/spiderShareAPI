@@ -3,11 +3,13 @@ import {
   AuditEntry,
   BackofficeUser,
   BackofficeUserDetail,
+  ConfigEntry,
   DashboardSummary,
   OffsetPagination,
   QueueJob,
   RawLogLine,
   UserListFilters,
+  UserCreateInput,
   UserUpdateInput,
   VideoDetail,
   VideoListFilters,
@@ -34,6 +36,10 @@ export const backofficeService = {
     return apiRequest<DashboardSummary>("/admin/dashboard");
   },
 
+  async getConfig(): Promise<ConfigEntry[]> {
+    return apiRequest<ConfigEntry[]>("/admin/config");
+  },
+
   async getVideos(filters: VideoListFilters = {}): Promise<VideoSummary[]> {
     return apiRequest<VideoSummary[]>(
       `/admin/videos${queryString({
@@ -41,6 +47,8 @@ export const backofficeService = {
         title: filters.title,
         owner: filters.owner,
         visibility: filters.visibility,
+        sort_by: filters.sortBy,
+        sort_direction: filters.sortDirection,
         limit: filters.limit,
         offset: filters.offset
       })}`
@@ -69,6 +77,11 @@ export const backofficeService = {
         video_id: filters.videoId,
         job_id: filters.jobId,
         level: filters.level,
+        event_type: filters.eventType,
+        worker_name: filters.workerName,
+        search: filters.search,
+        created_from: filters.createdFrom,
+        created_to: filters.createdTo,
         limit: filters.limit,
         offset: filters.offset
       })}`
@@ -109,6 +122,13 @@ export const backofficeService = {
 
   async getUser(userId: string): Promise<BackofficeUserDetail> {
     return apiRequest<BackofficeUserDetail>(`/admin/users/${userId}`);
+  },
+
+  async createUser(input: UserCreateInput): Promise<void> {
+    await apiRequest("/auth/register", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
   },
 
   async updateUser(userId: string, input: UserUpdateInput): Promise<BackofficeUserDetail> {

@@ -1,24 +1,48 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 from typing import BinaryIO
 from uuid import UUID
 
 from app.modules.videos.domain.video import (
     Video,
+    VideoCategory,
+    VideoCategoryCreate,
     VideoCreate,
     VideoProcessingResult,
     VideoReaction,
+    VideoTag,
+    VideoTagCreate,
     VideoVariantType,
+)
+
+VIDEO_LIST_DEFAULT_SORT_BY = "created_at"
+VIDEO_LIST_DEFAULT_SORT_DIRECTION = "desc"
+VIDEO_LIST_SORT_DIRECTIONS = ("asc", "desc")
+VIDEO_LIST_SORT_FIELDS = (
+    "created_at",
+    "source_created_at",
+    "updated_at",
+    "title",
+    "favorite_count",
+    "duration_seconds",
 )
 
 
 @dataclass(frozen=True)
 class VideoListFilters:
     title: str | None = None
-    tags: list[str] | None = None
     category_ids: list[UUID] | None = None
+    tag_ids: list[UUID] | None = None
     owner_id: UUID | None = None
+    created_from: date | None = None
+    created_to: date | None = None
+    edited: bool | None = None
+    sort_by: str = VIDEO_LIST_DEFAULT_SORT_BY
+    sort_direction: str = VIDEO_LIST_DEFAULT_SORT_DIRECTION
 
 
 @dataclass(frozen=True)
@@ -41,6 +65,13 @@ class VideoRepository(ABC):
         limit: int,
         offset: int,
     ) -> VideoListResult:
+        pass
+
+    @abstractmethod
+    def list_by_processing_status(
+        self,
+        statuses: list[str],
+    ) -> list[Video]:
         pass
 
     @abstractmethod
@@ -83,8 +114,11 @@ class VideoRepository(ABC):
         title: str | None = None,
         description: str | None = None,
         is_registered_only: bool | None = None,
+        edited: bool | None = None,
         category_ids: list[UUID] | None = None,
-        tags: list[str] | None = None,
+        tag_ids: list[UUID] | None = None,
+        source_created_at: datetime | None = None,
+        source_created_at_set: bool = False,
     ) -> Video | None:
         pass
 
@@ -142,6 +176,67 @@ class VideoRepository(ABC):
 
     @abstractmethod
     def get_reaction_counts(self, video_id: UUID) -> dict[str, int]:
+        pass
+
+
+class VideoCategoryRepository(ABC):
+    @abstractmethod
+    def list(self) -> list[VideoCategory]:
+        pass
+
+    @abstractmethod
+    def search(self, *, name: str | None = None) -> list[VideoCategory]:
+        pass
+
+    @abstractmethod
+    def get_by_id(self, category_id: UUID) -> VideoCategory | None:
+        pass
+
+    @abstractmethod
+    def create(self, category: VideoCategoryCreate) -> VideoCategory:
+        pass
+
+    @abstractmethod
+    def update(self, category_id: UUID, category: VideoCategoryCreate) -> VideoCategory | None:
+        pass
+
+    @abstractmethod
+    def delete(self, category_id: UUID) -> bool:
+        pass
+
+    @abstractmethod
+    def upsert_steam_category(self, category: VideoCategoryCreate) -> VideoCategory:
+        pass
+
+
+class VideoTagRepository(ABC):
+    @abstractmethod
+    def list(self) -> list[VideoTag]:
+        pass
+
+    @abstractmethod
+    def get_by_id(self, tag_id: UUID) -> VideoTag | None:
+        pass
+
+    @abstractmethod
+    def search(
+        self,
+        *,
+        id: str | None = None,
+        name: str | None = None,
+    ) -> list[VideoTag]:
+        pass
+
+    @abstractmethod
+    def create(self, tag: VideoTagCreate) -> VideoTag:
+        pass
+
+    @abstractmethod
+    def update(self, tag_id: UUID, tag: VideoTagCreate) -> VideoTag | None:
+        pass
+
+    @abstractmethod
+    def delete(self, tag_id: UUID) -> bool:
         pass
 
 

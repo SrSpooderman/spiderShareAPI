@@ -23,7 +23,10 @@ services:
     command: >
       sh -c "alembic -c /app/alembic.ini upgrade head &&
       python -m app.bootstrap.seed_super_admin &&
-      uvicorn run:app --host 0.0.0.0 --port 8000 --reload --no-access-log"
+      uvicorn run:app --host 0.0.0.0 --port 8000 --reload
+      --reload-dir /app/app --reload-dir /app/config
+      --reload-exclude .pytest_cache --reload-exclude .pytest-tmp
+      --reload-exclude test-tmp-* --no-access-log"
 
   worker:
     build:

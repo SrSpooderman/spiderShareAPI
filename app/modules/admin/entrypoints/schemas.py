@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.modules.users.domain.user import UserRole
+from app.modules.users.domain.user import AuthProvider, UserRole
 from app.modules.videos.domain.video import VideoProcessingStatus
 
 
@@ -15,6 +15,16 @@ class AdminServiceStatusResponse(CamelModel):
     name: str
     status: str
     detail: str
+
+
+AdminConfigValue = str | int | float | bool | list[str] | None
+
+
+class AdminConfigEntryResponse(CamelModel):
+    key: str
+    value: AdminConfigValue
+    value_type: str = Field(alias="valueType")
+    category: str
 
 
 class AdminProcessingErrorResponse(CamelModel):
@@ -36,6 +46,7 @@ class AdminVideoSummaryResponse(CamelModel):
     processing_status: VideoProcessingStatus = Field(alias="processingStatus")
     visibility: str
     duration_seconds: float | None = Field(alias="durationSeconds")
+    source_created_at: datetime | None = Field(alias="sourceCreatedAt")
     created_at: datetime = Field(alias="createdAt")
     latest_processing_error: AdminProcessingErrorResponse | None = Field(
         alias="latestProcessingError",
@@ -84,6 +95,7 @@ class AdminWorkerEventResponse(CamelModel):
     video_id: UUID | None = Field(alias="videoId")
     job_id: str | None = Field(alias="jobId")
     worker_name: str = Field(alias="workerName")
+    metadata: dict | None = None
     created_at: datetime = Field(alias="createdAt")
 
 
@@ -99,12 +111,17 @@ class AdminUserResponse(CamelModel):
     id: UUID
     username: str
     display_name: str | None = Field(alias="displayName")
+    auth_provider: AuthProvider = Field(default=AuthProvider.LOCAL, alias="authProvider")
+    oidc_email: str | None = Field(default=None, alias="oidcEmail")
+    oidc_name: str | None = Field(default=None, alias="oidcName")
     role: UserRole
     is_active: bool = Field(alias="isActive")
     video_count: int = Field(alias="videoCount")
 
 
 class AdminUserDetailResponse(AdminUserResponse):
+    oidc_subject: str | None = Field(default=None, alias="oidcSubject")
+    oidc_groups: list[str] = Field(default_factory=list, alias="oidcGroups")
     last_login_at: datetime | None = Field(alias="lastLoginAt")
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")

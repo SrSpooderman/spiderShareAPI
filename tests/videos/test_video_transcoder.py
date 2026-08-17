@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
@@ -59,7 +60,9 @@ def test_transcoder_generates_only_low_h264_variant(tmp_path, monkeypatch) -> No
             path=source_path,
             width=1920,
             height=1080,
+            video_codec="h264",
             duration_seconds=60.0,
+            source_created_at=None,
         )
 
     def fake_run_ffmpeg(command: list[str]) -> None:
@@ -79,3 +82,75 @@ def test_transcoder_generates_only_low_h264_variant(tmp_path, monkeypatch) -> No
     assert [variant.codec for variant in result.variants] == ["h264"]
     assert len(commands) == 2
     assert all("libaom-av1" not in command for command in commands)
+    assert all("yuv420p" in command for command in commands[:1])
+
+
+@pytest.mark.unit
+def test_transcoder_generates_original_h264_variant_for_av1_source(tmp_path, monkeypatch) -> None:
+    video_id = uuid4()
+    source_path = tmp_path / "originals" / str(video_id) / "original.mp4"
+    commands: list[list[str]] = []
+    transcoder = FfmpegVideoTranscoder(root_path=str(tmp_path))
+
+    def fake_probe_source(_video_id):
+        return _SourceMetadata(
+            path=source_path,
+            width=1920,
+            height=1080,
+            video_codec="av1",
+            duration_seconds=60.0,
+            source_created_at=None,
+        )
+
+    def fake_run_ffmpeg(command: list[str]) -> None:
+        commands.append(command)
+        output_path = Path(command[-1])
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(b"output")
+
+    monkeypatch.setattr(transcoder, "_probe_source", fake_probe_source)
+    monkeypatch.setattr(transcoder, "_run_ffmpeg", fake_run_ffmpeg)
+
+    result = transcoder.transcode(video_id)
+
+    assert [variant.variant_type for variant in result.variants] == [
+        VideoVariantType.ORIGINAL_H264,
+        VideoVariantType.LOW_H264,
+    ]
+    assert [variant.codec for variant in result.variants] == ["h264", "h264"]
+    assert [Path(variant.path).name for variant in result.variants] == [
+        "original_h264.mp4",
+        "low_h264.mp4",
+    ]
+    assert len(commands) == 3
+    assert commands[0][-1].endswith("original_h264.mp4")
+    assert commands[1][-1].endswith("low_h264.mp4")
+    assert commands[0][commands[0].index("-pix_fmt") + 1] == "yuv420p"
+    assert commands[1][commands[1].index("-pix_fmt") + 1] == "yuv420p"
+
+
+@pytest.mark.unit
+def test_transcoder_reads_source_creation_time_from_format_metadata() -> None:
+    transcoder = FfmpegVideoTranscoder(root_path="/tmp/videos")
+
+    source_created_at = transcoder._source_created_at(
+        {
+            "format": {
+                "tags": {
+                    "creation_time": "2026-07-07T18:22:10.000000Z",
+                },
+            },
+            "streams": [],
+        }
+    )
+
+    assert source_created_at == datetime(
+        2026,
+        7,
+        7,
+        18,
+        22,
+        10,
+        tzinfo=timezone.utc,
+    )
+

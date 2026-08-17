@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import BinaryIO
 from uuid import UUID, uuid4
 
@@ -15,8 +16,10 @@ class UploadVideoCommand:
     content_type: str | None
     file: BinaryIO
     is_registered_only: bool = False
+    edited: bool = False
+    source_created_at: datetime | None = None
     category_ids: list[UUID] = field(default_factory=list)
-    tags: list[str] = field(default_factory=list)
+    tag_ids: list[UUID] = field(default_factory=list)
 
 
 class UploadVideo:
@@ -46,8 +49,10 @@ class UploadVideo:
                     description=command.description,
                     original_filename=command.original_filename,
                     is_registered_only=command.is_registered_only,
+                    edited=command.edited,
+                    source_created_at=command.source_created_at,
                     category_ids=command.category_ids,
-                    tags=command.tags,
+                    tag_ids=command.tag_ids,
                 )
             )
         except Exception:

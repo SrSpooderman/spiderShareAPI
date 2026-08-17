@@ -1,17 +1,20 @@
-import { ShieldCheck } from "lucide-react";
+import { KeyRound, ShieldCheck } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "@/modules/auth/AuthContext";
+import { rememberOidcReturnTo } from "@/modules/auth/pages/OidcCallbackPage";
 
 export function LoginPage() {
-  const { isAuthenticated, login } = useAuth();
+  const { isAuthenticated, login, startOidcLogin } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [ssoError, setSsoError] = useState<string | null>(null);
+  const [isSubmittingLocal, setIsSubmittingLocal] = useState(false);
+  const [isStartingSso, setIsStartingSso] = useState(false);
 
   const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname ?? "/dashboard";
 
@@ -19,57 +22,83 @@ export function LoginPage() {
     return <Navigate to={from} replace />;
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleLocalLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(null);
-    setIsSubmitting(true);
+    setLocalError(null);
+    setIsSubmittingLocal(true);
 
     try {
       await login(username, password);
       navigate(from, { replace: true });
     } catch {
-      setError("No se pudo iniciar sesion con esas credenciales.");
+      setLocalError("No se pudo iniciar sesion con esas credenciales.");
     } finally {
-      setIsSubmitting(false);
+      setIsSubmittingLocal(false);
+    }
+  }
+
+  async function handleSsoLogin() {
+    setSsoError(null);
+    setIsStartingSso(true);
+    rememberOidcReturnTo(from);
+
+    try {
+      await startOidcLogin(new URL(from, window.location.origin).toString());
+    } catch {
+      setSsoError("No se pudo iniciar el login con SSO.");
+      setIsStartingSso(false);
     }
   }
 
   return (
     <main className="login-page">
-      <form className="login-panel" onSubmit={handleSubmit}>
+      <section className="login-panel">
         <ShieldCheck size={32} />
-        <h1>SpiderShare Backoffice</h1>
-        <p>Acceso operativo para administracion, colas, worker y auditoria.</p>
+        <h1>Cliponomicon Backoffice</h1>
+        <p>Acceso operativo para administracion.</p>
 
-        <label className="field">
-          <span>Usuario</span>
-          <input
-            autoComplete="username"
-            name="username"
-            onChange={(event) => setUsername(event.target.value)}
-            required
-            value={username}
-          />
-        </label>
+        <form className="login-local-form" onSubmit={handleLocalLogin}>
+          <label className="field">
+            <span>Usuario</span>
+            <input
+              autoComplete="username"
+              name="username"
+              onChange={(event) => setUsername(event.target.value)}
+              required
+              value={username}
+            />
+          </label>
 
-        <label className="field">
-          <span>Contrasena</span>
-          <input
-            autoComplete="current-password"
-            name="password"
-            onChange={(event) => setPassword(event.target.value)}
-            required
-            type="password"
-            value={password}
-          />
-        </label>
+          <label className="field">
+            <span>Contrasena</span>
+            <input
+              autoComplete="current-password"
+              name="password"
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              type="password"
+              value={password}
+            />
+          </label>
 
-        {error ? <p className="form-error">{error}</p> : null}
+          {localError ? <p className="form-error">{localError}</p> : null}
 
-        <button className="button primary" disabled={isSubmitting} type="submit">
-          {isSubmitting ? "Entrando..." : "Entrar al panel"}
-        </button>
-      </form>
+          <button className="button ghost" disabled={isSubmittingLocal} type="submit">
+            {isSubmittingLocal ? "Entrando..." : "Entrar con usuario local"}
+          </button>
+
+          <div className="login-divider" role="separator">
+            <span>o inicia con SSO</span>
+          </div>
+
+          <button className="button primary" disabled={isStartingSso} onClick={handleSsoLogin} type="button">
+            <KeyRound size={16} />
+            {isStartingSso ? "Redirigiendo..." : "Continuar con SSO"}
+          </button>
+          {ssoError ? <p className="form-error">{ssoError}</p> : null}
+
+        </form>
+      </section>
     </main>
   );
 }

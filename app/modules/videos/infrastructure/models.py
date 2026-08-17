@@ -9,6 +9,7 @@ from sqlalchemy import (
     Float,
     String,
     Text,
+    LargeBinary,
     UniqueConstraint,
     func,
 )
@@ -51,6 +52,7 @@ class VideoModel(Base):
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)
     aspect_ratio: Mapped[str | None] = mapped_column(String(8), nullable=True)
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    source_created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     thumbnail_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     favorite_count: Mapped[int] = mapped_column(
         Integer,
@@ -169,6 +171,24 @@ class VideoCategoryModel(Base):
         default=lambda: str(uuid4()),
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
+    source: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="custom",
+        server_default="custom",
+    )
+    steam_appid: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    steamgriddb_game_id: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        index=True,
+    )
+    thumbnail_vertical_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    thumbnail_horizontal_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    thumbnail_vertical_image: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    thumbnail_vertical_content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    thumbnail_horizontal_image: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    thumbnail_horizontal_content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,

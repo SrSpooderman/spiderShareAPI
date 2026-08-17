@@ -1,13 +1,13 @@
-import logging
 from uuid import UUID
 
 from app.modules.users.domain.user import User
 from app.modules.videos.application.errors import VideoNotFoundError, VideoPermissionError
 from app.modules.videos.domain.ports import VideoRepository, VideoStorage
 from app.modules.videos.domain.video import can_delete_video
+from app.shared.infrastructure.logging import get_logger
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class DeleteVideo:

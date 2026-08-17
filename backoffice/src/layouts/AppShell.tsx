@@ -1,11 +1,13 @@
 import {
   Activity,
   ClipboardList,
+  Github,
   LayoutDashboard,
   ListVideo,
   LogOut,
   ScrollText,
   ServerCog,
+  Settings,
   ShieldCheck,
   Users
 } from "lucide-react";
@@ -17,10 +19,11 @@ import { Badge } from "@/shared/ui/Badge";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/config", label: "Config", icon: Settings },
   { to: "/videos", label: "Videos", icon: ListVideo },
   { to: "/worker/queue", label: "Cola", icon: ServerCog },
   { to: "/worker/events", label: "Eventos", icon: Activity },
-  { to: "/worker/logs", label: "Logs", icon: ScrollText },
+  { to: "/worker/logs", label: "Consola", icon: ScrollText },
   { to: "/users", label: "Usuarios", icon: Users },
   { to: "/audit", label: "Auditoria", icon: ClipboardList }
 ];
@@ -51,6 +54,16 @@ export function AppShell() {
             </NavLink>
           ))}
         </nav>
+
+        <a
+          className="github-link"
+          href="https://github.com/SrSpooderman"
+          target="_blank"
+          rel="noreferrer"
+        >
+          <Github size={18} />
+          <span>GitHub · SrSpooderman</span>
+        </a>
       </aside>
 
       <main className="main-panel">

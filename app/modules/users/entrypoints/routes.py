@@ -7,6 +7,7 @@ from app.modules.auth.application.password_hasher import PasswordHasher
 from app.modules.auth.wiring import get_current_user, get_password_hasher, require_admin
 from app.modules.users.domain.ports import UserPersistenceConflictError, UserRepository
 from app.modules.users.domain.user import (
+    AuthProvider,
     User,
     UserRole,
     can_create_user_with_role,
@@ -97,7 +98,7 @@ def list_users(
     current_user: User = Depends(require_admin),
     user_repository: UserRepository = Depends(get_user_repository),
 ) -> list[UserResponse]:
-    users = user_repository.list()
+    users = user_repository.list_users()
     visible_users = [
         user
         for user in users
@@ -275,6 +276,12 @@ def change_password(
 ) -> Response:
     target_user = _get_target_user(user_id, user_repository)
     is_self = _ensure_can_access_target(current_user, target_user)
+
+    if target_user.auth_provider != AuthProvider.LOCAL:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password cannot be changed for OIDC users",
+        )
 
     if is_self:
         if request.current_password is None:

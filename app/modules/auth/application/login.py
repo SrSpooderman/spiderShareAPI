@@ -5,7 +5,7 @@ from typing import Protocol
 from app.modules.auth.application.password_hasher import PasswordHasher
 from app.modules.auth.application.register import PublicUser, user_to_public
 from app.modules.users.domain.ports import UserRepository
-from app.modules.users.domain.user import User
+from app.modules.users.domain.user import AuthProvider, User
 
 
 class InvalidCredentialsError(Exception):
@@ -49,6 +49,9 @@ class LoginUser:
         user = self.user_repository.get_by_username(command.username)
 
         if user is None:
+            raise InvalidCredentialsError
+
+        if user.auth_provider != AuthProvider.LOCAL:
             raise InvalidCredentialsError
 
         if not self.password_hasher.verify_password(command.password, user.password_hash):

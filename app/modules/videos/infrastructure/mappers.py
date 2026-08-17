@@ -4,6 +4,7 @@ from app.modules.videos.domain.video import (
     Video,
     VideoAspectRatio,
     VideoCategory,
+    VideoCategorySource,
     VideoCreate,
     VideoFavorite,
     VideoOwner,
@@ -65,6 +66,7 @@ def video_model_to_domain(model: VideoModel) -> Video:
             else None
         ),
         duration_seconds=model.duration_seconds,
+        source_created_at=model.source_created_at,
         thumbnail_path=model.thumbnail_path,
         variants=variants,
         latest_processing_error=latest_processing_error,
@@ -83,6 +85,8 @@ def video_create_to_model(video: VideoCreate) -> VideoModel:
         description=video.description,
         original_filename=video.original_filename,
         is_registered_only=video.is_registered_only,
+        edited=video.edited,
+        source_created_at=video.source_created_at,
     )
     if video.id is not None:
         model.id = str(video.id)
@@ -94,6 +98,15 @@ def video_category_model_to_domain(model: VideoCategoryModel) -> VideoCategory:
     return VideoCategory(
         id=UUID(model.id),
         name=model.name,
+        source=VideoCategorySource(model.source or VideoCategorySource.CUSTOM.value),
+        steam_appid=model.steam_appid,
+        steamgriddb_game_id=model.steamgriddb_game_id,
+        thumbnail_vertical_url=model.thumbnail_vertical_url,
+        thumbnail_horizontal_url=model.thumbnail_horizontal_url,
+        thumbnail_vertical_image=model.thumbnail_vertical_image,
+        thumbnail_vertical_content_type=model.thumbnail_vertical_content_type,
+        thumbnail_horizontal_image=model.thumbnail_horizontal_image,
+        thumbnail_horizontal_content_type=model.thumbnail_horizontal_content_type,
         created_at=model.created_at,
         updated_at=model.updated_at,
     )

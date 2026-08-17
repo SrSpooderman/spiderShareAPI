@@ -1,6 +1,7 @@
 export type ProcessingStatus = "pending" | "processing" | "ready" | "failed";
 export type HealthStatus = "ok" | "warning" | "down";
 export type UserRole = "user" | "admin" | "super_admin";
+export type AuthProvider = "local" | "oidc";
 
 export type DashboardSummary = {
   totals: {
@@ -22,6 +23,13 @@ export type DashboardSummary = {
   recentUploads: VideoSummary[];
 };
 
+export type ConfigEntry = {
+  key: string;
+  value: string | number | boolean | string[] | null;
+  valueType: "string" | "number" | "boolean" | "list" | "empty";
+  category: string;
+};
+
 export type ProcessingError = {
   id: string;
   videoId: string;
@@ -41,6 +49,7 @@ export type VideoSummary = {
   processingStatus: ProcessingStatus;
   visibility: "public" | "registered";
   durationSeconds: number | null;
+  sourceCreatedAt: string | null;
   createdAt: string;
   latestProcessingError: ProcessingError | null;
 };
@@ -50,6 +59,8 @@ export type VideoListFilters = {
   title?: string;
   owner?: string;
   visibility?: "public" | "registered";
+  sortBy?: "created_at" | "source_created_at" | "updated_at" | "title" | "favorite_count" | "duration_seconds";
+  sortDirection?: "asc" | "desc";
   limit?: number;
   offset?: number;
 };
@@ -76,6 +87,7 @@ export type WorkerEvent = {
   videoId: string | null;
   jobId: string | null;
   workerName: string;
+  metadata: Record<string, unknown> | null;
   createdAt: string;
 };
 
@@ -91,6 +103,9 @@ export type BackofficeUser = {
   id: string;
   username: string;
   displayName: string | null;
+  authProvider: AuthProvider;
+  oidcEmail: string | null;
+  oidcName: string | null;
   role: UserRole;
   isActive: boolean;
   videoCount: number;
@@ -103,6 +118,8 @@ export type UserListFilters = {
 };
 
 export type BackofficeUserDetail = BackofficeUser & {
+  oidcSubject: string | null;
+  oidcGroups: string[];
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -112,6 +129,12 @@ export type BackofficeUserDetail = BackofficeUser & {
 export type UserUpdateInput = {
   role?: Exclude<UserRole, "super_admin">;
   isActive?: boolean;
+};
+
+export type UserCreateInput = {
+  username: string;
+  password: string;
+  role: Exclude<UserRole, "super_admin">;
 };
 
 export type AuditEntry = {
@@ -132,6 +155,11 @@ export type WorkerEventFilters = OffsetPagination & {
   level?: WorkerEvent["level"];
   videoId?: string;
   jobId?: string;
+  eventType?: string;
+  workerName?: string;
+  search?: string;
+  createdFrom?: string;
+  createdTo?: string;
 };
 
 export type RawLogLine = {

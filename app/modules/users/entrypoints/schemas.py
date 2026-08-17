@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.modules.users.domain.user import User, UserRole
+from app.modules.users.domain.user import AuthProvider, User, UserRole
 
 
 class UserResponse(BaseModel):
@@ -13,6 +13,11 @@ class UserResponse(BaseModel):
     bio: str | None
     has_avatar: bool
     ldap: bool
+    auth_provider: AuthProvider
+    oidc_subject: str | None
+    oidc_email: str | None
+    oidc_name: str | None
+    oidc_groups: list[str]
     role: UserRole
     is_active: bool
     last_seen_version: str | None
@@ -29,6 +34,11 @@ class UserResponse(BaseModel):
             bio=user.bio,
             has_avatar=user.avatar_image is not None,
             ldap=user.ldap,
+            auth_provider=user.auth_provider,
+            oidc_subject=user.oidc_subject,
+            oidc_email=user.oidc_email,
+            oidc_name=user.oidc_name,
+            oidc_groups=user.oidc_groups,
             role=user.role,
             is_active=user.is_active,
             last_seen_version=user.last_seen_version,

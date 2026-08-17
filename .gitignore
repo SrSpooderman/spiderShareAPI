@@ -42,6 +42,7 @@ pip-delete-this-directory.txt
 htmlcov/
 .pytest_cache/
 .pytest-tmp/
+test-tmp-*/
 .tox/
 .nox/
 coverage.xml

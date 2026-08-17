@@ -2,6 +2,7 @@ import json
 import shutil
 import subprocess
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from uuid import UUID
 
@@ -20,7 +21,9 @@ class _SourceMetadata:
     path: Path
     width: int
     height: int
+    video_codec: str
     duration_seconds: float
+    source_created_at: datetime | None
 
 
 @dataclass(frozen=True)
@@ -46,12 +49,38 @@ class FfmpegVideoTranscoder(VideoTranscoder):
         thumbnails_dir.mkdir(parents=True, exist_ok=True)
         tmp_dir.mkdir(parents=True, exist_ok=True)
 
+        original_h264_path = variants_dir / "original_h264.mp4"
         h264_path = variants_dir / "low_h264.mp4"
         thumbnail_path = thumbnails_dir / "thumbnail.jpg"
+        tmp_original_h264_path = tmp_dir / "original_h264.mp4"
         tmp_h264_path = tmp_dir / "low_h264.mp4"
         tmp_thumbnail_path = tmp_dir / "thumbnail.jpg"
 
         try:
+            if self._is_av1(source):
+                self._run_ffmpeg(
+                    [
+                        "ffmpeg",
+                        "-y",
+                        "-i",
+                        str(source.path),
+                        "-vf",
+                        self._scale_pad_filter(original_geometry),
+                        "-c:v",
+                        "libx264",
+                    "-preset",
+                    "veryfast",
+                    "-crf",
+                    "20",
+                    "-pix_fmt",
+                    "yuv420p",
+                    "-c:a",
+                    "aac",
+                        "-movflags",
+                        "+faststart",
+                        str(tmp_original_h264_path),
+                    ]
+                )
             self._run_ffmpeg(
                 [
                     "ffmpeg",
@@ -62,12 +91,14 @@ class FfmpegVideoTranscoder(VideoTranscoder):
                     self._scale_pad_filter(low_geometry),
                     "-c:v",
                     "libx264",
-                    "-preset",
-                    "veryfast",
-                    "-crf",
-                    "23",
-                    "-c:a",
-                    "aac",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "23",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
                     "-movflags",
                     "+faststart",
                     str(tmp_h264_path),
@@ -88,26 +119,42 @@ class FfmpegVideoTranscoder(VideoTranscoder):
                     str(tmp_thumbnail_path),
                 ]
             )
+            if tmp_original_h264_path.exists():
+                tmp_original_h264_path.replace(original_h264_path)
             tmp_h264_path.replace(h264_path)
             tmp_thumbnail_path.replace(thumbnail_path)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
+
+        variants = []
+        if original_h264_path.exists():
+            variants.append(
+                self._variant(
+                    video_id=video_id,
+                    variant_type=VideoVariantType.ORIGINAL_H264,
+                    codec="h264",
+                    path=original_h264_path,
+                    geometry=original_geometry,
+                )
+            )
+        variants.append(
+            self._variant(
+                video_id=video_id,
+                variant_type=VideoVariantType.LOW_H264,
+                codec="h264",
+                path=h264_path,
+                geometry=low_geometry,
+            )
+        )
 
         return VideoProcessingResult(
             width=original_geometry.width,
             height=original_geometry.height,
             aspect_ratio=original_geometry.aspect_ratio,
             duration_seconds=source.duration_seconds,
+            source_created_at=source.source_created_at,
             thumbnail_path=self._relative_path(thumbnail_path),
-            variants=[
-                self._variant(
-                    video_id=video_id,
-                    variant_type=VideoVariantType.LOW_H264,
-                    codec="h264",
-                    path=h264_path,
-                    geometry=low_geometry,
-                ),
-            ],
+            variants=variants,
         )
 
     def _probe_source(self, video_id: UUID) -> _SourceMetadata:
@@ -125,9 +172,10 @@ class FfmpegVideoTranscoder(VideoTranscoder):
                 "-select_streams",
                 "v:0",
                 "-show_entries",
-                "stream=width,height",
-                "-show_entries",
-                "format=duration",
+                (
+                    "stream=codec_name,width,height:stream_tags=creation_time:"
+                    "format=duration:format_tags=creation_time"
+                ),
                 "-of",
                 "json",
                 str(path),
@@ -143,9 +191,46 @@ class FfmpegVideoTranscoder(VideoTranscoder):
         return _SourceMetadata(
             path=path,
             width=int(stream["width"]),
+            video_codec=str(stream.get("codec_name") or "").lower(),
             height=int(stream["height"]),
             duration_seconds=float(metadata["format"]["duration"]),
+            source_created_at=self._source_created_at(metadata),
         )
+
+    def _is_av1(self, source: _SourceMetadata) -> bool:
+        return source.video_codec == "av1"
+
+    def _source_created_at(self, metadata: dict) -> datetime | None:
+        return self._first_metadata_datetime(
+            metadata,
+            ("creation_time", "date"),
+        )
+
+    def _first_metadata_datetime(
+        self,
+        metadata: dict,
+        tag_names: tuple[str, ...],
+    ) -> datetime | None:
+        candidates = [
+            *[
+                metadata.get("format", {}).get("tags", {}).get(tag_name)
+                for tag_name in tag_names
+            ],
+            *[
+                stream.get("tags", {}).get(tag_name)
+                for stream in metadata.get("streams", [])
+                for tag_name in tag_names
+            ],
+        ]
+        for value in candidates:
+            if not value:
+                continue
+            try:
+                return datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+
+        return None
 
     def _target_geometry(self, width: int, height: int) -> _OutputGeometry:
         source_ratio = width / height

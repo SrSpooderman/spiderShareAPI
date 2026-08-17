@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from uuid import UUID
 
@@ -23,6 +24,7 @@ from app.modules.admin.infrastructure.models import (
     WorkerEventModel,
 )
 from app.modules.users.infrastructure.models import UserModel
+from app.modules.videos.domain.ports import VIDEO_LIST_DEFAULT_SORT_BY
 from app.modules.videos.domain.video import VideoProcessingStatus
 from app.modules.videos.infrastructure.models import (
     VideoCategoryAssignmentModel,
@@ -30,6 +32,15 @@ from app.modules.videos.infrastructure.models import (
     VideoProcessingErrorModel,
     VideoTagAssignmentModel,
 )
+
+ADMIN_VIDEO_SORT_COLUMNS = {
+    "created_at": VideoModel.created_at,
+    "source_created_at": VideoModel.source_created_at,
+    "updated_at": VideoModel.updated_at,
+    "title": VideoModel.title,
+    "favorite_count": VideoModel.favorite_count,
+    "duration_seconds": VideoModel.duration_seconds,
+}
 
 
 class AdminReadModel:
@@ -44,6 +55,8 @@ class AdminReadModel:
         owner_id: UUID | None = None,
         owner: str | None = None,
         visibility: str | None = None,
+        sort_by: str = VIDEO_LIST_DEFAULT_SORT_BY,
+        sort_direction: str = "desc",
         limit: int = 50,
         offset: int = 0,
     ) -> list[AdminVideoSummaryResponse]:
@@ -58,6 +71,11 @@ class AdminReadModel:
         video_id: UUID | None = None,
         job_id: str | None = None,
         level: str | None = None,
+        event_type: str | None = None,
+        worker_name: str | None = None,
+        search: str | None = None,
+        created_from: datetime | None = None,
+        created_to: datetime | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[AdminWorkerEventResponse]:
@@ -142,6 +160,8 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
         owner_id: UUID | None = None,
         owner: str | None = None,
         visibility: str | None = None,
+        sort_by: str = VIDEO_LIST_DEFAULT_SORT_BY,
+        sort_direction: str = "desc",
         limit: int = 50,
         offset: int = 0,
     ) -> list[AdminVideoSummaryResponse]:
@@ -151,7 +171,7 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
                 selectinload(VideoModel.owner),
                 selectinload(VideoModel.processing_errors),
             )
-            .order_by(VideoModel.created_at.desc())
+            .order_by(*self._video_order_by(sort_by, sort_direction))
             .limit(limit)
             .offset(offset)
         )
@@ -172,6 +192,23 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
             statement = statement.where(*conditions)
 
         return [self._video_summary(model) for model in self.session.scalars(statement).all()]
+
+    def _video_order_by(self, sort_by: str, sort_direction: str) -> list:
+        sort_column = ADMIN_VIDEO_SORT_COLUMNS.get(
+            sort_by,
+            ADMIN_VIDEO_SORT_COLUMNS[VIDEO_LIST_DEFAULT_SORT_BY],
+        )
+        sort_expression = (
+            sort_column.asc()
+            if sort_direction == "asc"
+            else sort_column.desc()
+        )
+
+        return [
+            sort_column.is_(None).asc(),
+            sort_expression,
+            VideoModel.id.asc(),
+        ]
 
     def get_video(self, video_id: UUID) -> AdminVideoDetailResponse | None:
         statement = (
@@ -218,6 +255,11 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
         video_id: UUID | None = None,
         job_id: str | None = None,
         level: str | None = None,
+        event_type: str | None = None,
+        worker_name: str | None = None,
+        search: str | None = None,
+        created_from: datetime | None = None,
+        created_to: datetime | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[AdminWorkerEventResponse]:
@@ -234,6 +276,20 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
             conditions.append(WorkerEventModel.job_id == job_id)
         if level:
             conditions.append(WorkerEventModel.level == level)
+        if event_type:
+            conditions.append(WorkerEventModel.event_type == event_type)
+        if worker_name:
+            conditions.append(WorkerEventModel.worker_name == worker_name)
+        if search:
+            pattern = f"%{search}%"
+            conditions.append(
+                WorkerEventModel.event_type.ilike(pattern)
+                | WorkerEventModel.message.ilike(pattern)
+            )
+        if created_from is not None:
+            conditions.append(WorkerEventModel.created_at >= created_from)
+        if created_to is not None:
+            conditions.append(WorkerEventModel.created_at <= created_to)
         if conditions:
             statement = statement.where(*conditions)
 
@@ -246,6 +302,7 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
                 video_id=UUID(model.video_id) if model.video_id is not None else None,
                 job_id=model.job_id,
                 worker_name=model.worker_name,
+                metadata=model.metadata_json,
                 created_at=model.created_at,
             )
             for model in self.session.scalars(statement).all()
@@ -293,6 +350,8 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
         summary = self._user_summary(model, int(video_count or 0))
         return AdminUserDetailResponse(
             **summary.model_dump(),
+            oidc_subject=model.oidc_subject,
+            oidc_groups=self._oidc_groups(model),
             last_login_at=model.last_login_at,
             created_at=model.created_at,
             updated_at=model.updated_at,
@@ -353,10 +412,24 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
             id=UUID(model.id),
             username=model.username,
             display_name=model.display_name,
+            auth_provider=model.auth_provider,
+            oidc_email=model.oidc_email,
+            oidc_name=model.oidc_name,
             role=model.role,
             is_active=model.is_active,
             video_count=video_count,
         )
+
+    def _oidc_groups(self, model: UserModel) -> list[str]:
+        if not model.oidc_groups:
+            return []
+        try:
+            decoded = json.loads(model.oidc_groups)
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(decoded, list):
+            return []
+        return [str(group) for group in decoded if str(group).strip()]
 
     def _video_status_counts(self) -> dict[str, int]:
         counts = {
@@ -382,6 +455,7 @@ class SqlAlchemyAdminReadModel(AdminReadModel):
             processing_status=VideoProcessingStatus(model.processing_status),
             visibility="registered" if model.is_registered_only else "public",
             duration_seconds=model.duration_seconds,
+            source_created_at=model.source_created_at,
             created_at=model.created_at,
             latest_processing_error=(
                 AdminProcessingErrorResponse(

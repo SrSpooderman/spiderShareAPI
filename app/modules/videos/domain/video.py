@@ -22,7 +22,13 @@ class VideoProcessingStatus(str, Enum):
 class VideoVariantType(str, Enum):
     ORIGINAL = "original"
     ORIGINAL_AV1 = "original_av1"
+    ORIGINAL_H264 = "original_h264"
     LOW_H264 = "low_h264"
+
+
+class VideoCategorySource(str, Enum):
+    CUSTOM = "custom"
+    STEAM = "steam"
 
 
 @dataclass
@@ -36,8 +42,31 @@ class VideoOwner:
 class VideoCategory:
     id: UUID
     name: str
+    source: VideoCategorySource
+    steam_appid: int | None
+    steamgriddb_game_id: int | None
+    thumbnail_vertical_url: str | None
+    thumbnail_horizontal_url: str | None
+    thumbnail_vertical_image: bytes | None
+    thumbnail_vertical_content_type: str | None
+    thumbnail_horizontal_image: bytes | None
+    thumbnail_horizontal_content_type: str | None
     created_at: datetime
     updated_at: datetime
+
+
+@dataclass(frozen=True)
+class VideoCategoryCreate:
+    name: str
+    source: VideoCategorySource = VideoCategorySource.CUSTOM
+    steam_appid: int | None = None
+    steamgriddb_game_id: int | None = None
+    thumbnail_vertical_url: str | None = None
+    thumbnail_horizontal_url: str | None = None
+    thumbnail_vertical_image: bytes | None = None
+    thumbnail_vertical_content_type: str | None = None
+    thumbnail_horizontal_image: bytes | None = None
+    thumbnail_horizontal_content_type: str | None = None
 
 
 @dataclass
@@ -46,6 +75,11 @@ class VideoTag:
     name: str
     created_at: datetime
     updated_at: datetime
+
+
+@dataclass(frozen=True)
+class VideoTagCreate:
+    name: str
 
 
 @dataclass
@@ -111,6 +145,7 @@ class VideoProcessingResult:
     height: int
     aspect_ratio: VideoAspectRatio
     duration_seconds: float
+    source_created_at: datetime | None
     thumbnail_path: str
     variants: list[VideoVariantCreate]
 
@@ -123,8 +158,10 @@ class VideoCreate:
     original_filename: str
     id: UUID | None = None
     is_registered_only: bool = False
+    edited: bool = False
+    source_created_at: datetime | None = None
     category_ids: list[UUID] = field(default_factory=list)
-    tags: list[str] = field(default_factory=list)
+    tag_ids: list[UUID] = field(default_factory=list)
 
 
 @dataclass
@@ -143,6 +180,7 @@ class Video:
     height: int | None
     aspect_ratio: VideoAspectRatio | None
     duration_seconds: float | None
+    source_created_at: datetime | None
     thumbnail_path: str | None
     variants: list[VideoVariant]
     latest_processing_error: VideoProcessingError | None

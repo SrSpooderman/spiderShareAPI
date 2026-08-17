@@ -6,10 +6,15 @@ from app.modules.steam.domain.ports import SteamGameRepository
 from app.modules.steam.infrastructure.repository import SqlAlchemySteamGameRepository
 from app.shared.infrastructure.db.session import get_db
 from app.shared.infrastructure.providers.steam.steam_client import SteamClient
+from app.shared.infrastructure.providers.steam.steamgriddb_client import SteamGridDbClient
 
 
 def get_steam_client() -> SteamClient:
     return SteamClient()
+
+
+def get_steamgriddb_client() -> SteamGridDbClient:
+    return SteamGridDbClient()
 
 
 def get_steam_game_repository(

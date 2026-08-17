@@ -198,6 +198,7 @@ Antes de levantarlo en produccion:
 API_DOMAIN=api.tudominio.com
 BACKOFFICE_DOMAIN=admin.tudominio.com
 LETSENCRYPT_EMAIL=admin@tudominio.com
+APP_ROOT_PATH=/api
 BACKOFFICE_PROXY_API_BASE_URL=/api
 NGINX_HTTP_PORT=80
 NGINX_HTTPS_PORT=443
@@ -256,8 +257,11 @@ Variables principales:
 | --- | --- |
 | `APP_NAME` | Nombre de la aplicacion. |
 | `APP_VERSION` | Version devuelta por `/version`. |
+| `APP_ROOT_PATH` | Prefijo publico si la API se sirve bajo una subruta, por ejemplo `/api`. Vacio por defecto. |
 | `APP_ENV` | Entorno logico. `local`, `dev` o `development` activan logging DEBUG. |
 | `APP_DEBUG` | Flag de debug. |
+| `LOG_FORMAT` | `pretty` para desarrollo legible o `json` para logs estructurados. |
+| `LOG_LEVEL` | Nivel opcional: `DEBUG`, `INFO`, `WARNING`, `ERROR` o `CRITICAL`. |
 | `APP_HOST` | Host esperado para arranque local si se usa externamente. |
 | `APP_PORT` | Puerto local publicado por Docker para la API. |
 | `BACKOFFICE_PORT` | Puerto local publicado por Docker para el backoffice. |
@@ -278,13 +282,28 @@ Variables principales:
 | `SECRET_KEY` | Clave para firmar JWT. Debe ser larga y secreta. |
 | `JWT_ALGORITHM` | Algoritmo JWT. Por defecto `HS256`. |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Minutos de vida del token. |
+| `OIDC_ENABLED` | Activa login OIDC/SSO. |
+| `OIDC_ISSUER_URL` | Issuer del realm/proveedor OIDC. |
+| `OIDC_AUTHORIZATION_ENDPOINT` | Endpoint de autorizacion OIDC opcional; si se omite se deriva del issuer. |
+| `OIDC_TOKEN_ENDPOINT` | Endpoint de token OIDC opcional; si se omite se deriva del issuer. |
+| `OIDC_JWKS_URI` | JWKS OIDC opcional; si se omite se deriva del issuer. |
+| `OIDC_CLIENT_ID` | Client ID registrado en el proveedor OIDC. |
+| `OIDC_CLIENT_SECRET` | Client secret registrado en el proveedor OIDC. |
+| `OIDC_SCOPE` | Scopes solicitados al proveedor OIDC. |
+| `OIDC_REDIRECT_URI` | Callback publico de la API que debe registrarse en el proveedor OIDC, por ejemplo `https://api.example.com/auth/oidc/callback`. |
+| `OIDC_ALLOWED_FRONTEND_DOMAINS` | Dominios frontend autorizados para la vuelta final tras OIDC, separados por comas. Si se omite, se usan los dominios de `CORS_ALLOWED_ORIGINS`. |
+| `OIDC_FRONTEND_CALLBACK_PATH` | Ruta de callback que debe existir en cada frontend autorizado. Por defecto `/login/oidc/callback`. |
+| `OIDC_DEFAULT_ROLE` | Rol asignado a usuarios creados desde OIDC. |
 | `SUPER_ADMIN_USERNAME` | Username inicial del super admin. |
 | `SUPER_ADMIN_PASSWORD` | Password inicial del super admin. |
 | `STEAM_WEB_API_KEY` | API key de Steam. Necesaria para consultar Steam real. |
 | `STEAM_WEB_API_BASE_URL` | URL base de Steam Web API. |
+| `STEAMGRIDDB_API_KEY` | Bearer token de SteamGridDB para buscar juegos e importar grids. |
+| `STEAMGRIDDB_API_BASE_URL` | URL base de SteamGridDB API v2. |
 | `VIDEO_STORAGE_PATH` | Carpeta/volumen donde se guardan originales, variantes y miniaturas. |
 | `MAX_VIDEO_SIZE_BYTES` | Tamano maximo de subida. Por defecto `524288000` bytes. |
 | `MAX_VIDEO_DURATION_SECONDS` | Duracion maxima aceptada. Por defecto `300`. |
+| `MAX_BULK_VIDEO_UPLOADS` | Numero maximo de videos en subida bulk. Por defecto `5`. |
 | `MAX_VIDEO_REACTIONS_PER_USER` | Numero maximo de reacciones distintas por usuario y video. |
 | `VIDEO_ALLOWED_MIME_TYPES` | Lista JSON de MIME types permitidos. |
 | `REDIS_URL` | URL de Redis usada por API y worker. |
@@ -297,8 +316,11 @@ Ejemplo minimo:
 ```env
 APP_NAME=SpiderShare
 APP_VERSION=1.0.0
+APP_ROOT_PATH=
 APP_ENV=local
 APP_DEBUG=true
+LOG_FORMAT=pretty
+LOG_LEVEL=
 APP_PORT=8000
 BACKOFFICE_PORT=5173
 BACKOFFICE_API_BASE_URL=http://localhost:8000
@@ -323,6 +345,19 @@ ACCESS_TOKEN_EXPIRE_MINUTES=15
 
 SUPER_ADMIN_USERNAME=admin
 SUPER_ADMIN_PASSWORD=change-me-before-first-start
+
+OIDC_ENABLED=false
+OIDC_ISSUER_URL=https://keycloak.tudominio.com/realms/cliponomicon
+OIDC_AUTHORIZATION_ENDPOINT=
+OIDC_TOKEN_ENDPOINT=
+OIDC_JWKS_URI=
+OIDC_CLIENT_ID=cliponomicon
+OIDC_CLIENT_SECRET=
+OIDC_SCOPE=openid profile email
+OIDC_REDIRECT_URI=https://api.example.com/auth/oidc/callback
+OIDC_ALLOWED_FRONTEND_DOMAINS=admin.example.com,www.example.com
+OIDC_FRONTEND_CALLBACK_PATH=/login/oidc/callback
+OIDC_DEFAULT_ROLE=user
 
 VIDEO_STORAGE_PATH=/app/storage/videos
 MAX_VIDEO_SIZE_BYTES=524288000
@@ -462,6 +497,13 @@ Parametros:
 | Metodo | Ruta | Auth | Descripcion |
 | --- | --- | --- | --- |
 | `POST` | `/videos` | Si | Sube original, crea video `pending`, encola procesado y responde `201`. |
+| `GET` | `/category` | Publico | Lista categorias disponibles para videos. |
+| `POST` | `/category` | Admin | Crea una categoria custom con thumbnails opcionales. |
+| `GET` | `/category/steam/search` | Admin | Busca juegos en SteamGridDB para importar categoria. |
+| `GET` | `/category/steam/games/{game_id}/grids` | Admin | Lista grids de SteamGridDB con paginado para seleccionar thumbnails. |
+| `POST` | `/category/steam/import` | Admin | Importa/actualiza categoria desde SteamGridDB y guarda los grids elegidos o los primeros disponibles. |
+| `PATCH` | `/category/{category_id}` | Admin | Edita una categoria. |
+| `DELETE` | `/category/{category_id}` | Admin | Elimina una categoria y sus asociaciones con videos. |
 | `POST` | `/videos/{video_id}/processing/retry` | Super admin | Limpia salidas de procesado y reencola un video no completo. |
 | `GET` | `/videos` | Publico | Lista videos visibles. Acepta token opcional para incluir privados accesibles. |
 | `GET` | `/videos/{video_id}` | Publico | Detalle si el video es visible para el usuario actual o anonimo. |
@@ -470,12 +512,12 @@ Parametros:
 | `GET` | `/videos/{video_id}/thumbnail` | Publico | Sirve miniatura JPEG si hay permiso. |
 | `PATCH` | `/videos/{video_id}` | Si | Actualiza metadata si owner/admin/super admin. |
 | `DELETE` | `/videos/{video_id}` | Si | Elimina video si owner/super admin. |
-| `POST` | `/videos/{video_id}/favorite` | Si | Marca favorito. |
-| `DELETE` | `/videos/{video_id}/favorite` | Si | Quita favorito. |
-| `GET` | `/users/me/video-favorites` | Si | Lista favoritos del usuario autenticado. |
-| `GET` | `/videos/{video_id}/reactions` | Publico | Conteos de reacciones visibles. |
-| `POST` | `/videos/{video_id}/reactions` | Si | Crea o actualiza reaccion. |
-| `DELETE` | `/videos/{video_id}/reactions` | Si | Elimina reaccion del usuario. |
+| `POST` | `/interactions/videos/{video_id}/favorite` | Si | Marca favorito. |
+| `DELETE` | `/interactions/videos/{video_id}/favorite` | Si | Quita favorito. |
+| `GET` | `/interactions/me/video-favorites` | Si | Lista favoritos del usuario autenticado. |
+| `GET` | `/interactions/videos/{video_id}/reactions` | Publico | Conteos de reacciones visibles. |
+| `POST` | `/interactions/videos/{video_id}/reactions` | Si | Crea o actualiza reaccion. |
+| `DELETE` | `/interactions/videos/{video_id}/reactions` | Si | Elimina reaccion del usuario. |
 
 ### Admin / Backoffice
 
@@ -502,6 +544,48 @@ Filtros de `GET /videos`:
 - `offset`: por defecto `0`.
 
 `GET /videos` es publico. Si no hay token, solo devuelve videos visibles para anonimos. Si hay token valido, puede incluir videos registrados/privados segun permisos.
+
+Categorias:
+
+- `source`: `custom` o `steam`.
+- `steam_appid`: appid de Steam cuando la categoria representa un juego Steam.
+- `steamgriddb_game_id`: id interno de SteamGridDB.
+- `thumbnail_vertical_url`: grid vertical estable `600x900`.
+- `thumbnail_horizontal_url`: grid horizontal estable `920x430`.
+
+Importar desde SteamGridDB:
+
+```bash
+curl -X POST http://localhost:8000/category/steam/import \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"steam_appid":400}'
+```
+
+Revisar grids antes de importar:
+
+```bash
+curl "http://localhost:8000/category/steam/games/22/grids?dimensions=600x900&limit=20&offset=0" \
+  -H "Authorization: Bearer <admin-token>"
+```
+
+Importar con imagenes elegidas:
+
+```bash
+curl -X POST http://localhost:8000/category/steam/import \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"steamgriddb_game_id":22,"thumbnail_vertical_url":"https://cdn.example.com/v.jpg","thumbnail_horizontal_url":"https://cdn.example.com/h.jpg"}'
+```
+
+Crear categoria custom:
+
+```bash
+curl -X POST http://localhost:8000/category \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Indie","thumbnail_vertical_url":"https://example.com/v.jpg","thumbnail_horizontal_url":"https://example.com/h.jpg"}'
+```
 
 ## Contrato de Videos
 
@@ -533,7 +617,7 @@ Campos relevantes:
 - `variants`: salidas procesadas por FFmpeg.
 - `latest_processing_error`: ultimo fallo de procesado, si existe.
 - `categories` y `tags`: metadata publica.
-- `is_owner`, `can_edit`, `can_delete`, `is_favorite`, `reactions`: aparecen en detalle.
+- `is_owner`, `can_edit`, `can_delete`, `is_favorite`, `reactions`: aparecen tanto en `GET /videos` como en `GET /videos/{video_id}`.
 
 ## Subida y Procesado de Videos
 

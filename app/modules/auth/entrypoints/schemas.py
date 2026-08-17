@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.modules.auth.application.login import LoginResult
 from app.modules.auth.application.register import PublicUser
-from app.modules.users.domain.user import User, UserRole
+from app.modules.users.domain.user import AuthProvider, User, UserRole
 
 
 class RegisterRequest(BaseModel):
@@ -35,12 +35,27 @@ class LoginRequest(BaseModel):
         return username
 
 
+class OidcAuthorizeResponse(BaseModel):
+    authorization_url: str
+    state: str
+
+
+class OidcCallbackRequest(BaseModel):
+    code: str = Field(min_length=1)
+    state: str = Field(min_length=1)
+
+
 class UserResponse(BaseModel):
     id: UUID
     username: str
     display_name: str | None
     bio: str | None
     ldap: bool
+    auth_provider: AuthProvider
+    oidc_subject: str | None
+    oidc_email: str | None
+    oidc_name: str | None
+    oidc_groups: list[str]
     role: UserRole
     is_active: bool
     last_seen_version: str | None
@@ -56,6 +71,11 @@ class UserResponse(BaseModel):
             display_name=user.display_name,
             bio=user.bio,
             ldap=user.ldap,
+            auth_provider=user.auth_provider,
+            oidc_subject=user.oidc_subject,
+            oidc_email=user.oidc_email,
+            oidc_name=user.oidc_name,
+            oidc_groups=user.oidc_groups or [],
             role=user.role,
             is_active=user.is_active,
             last_seen_version=user.last_seen_version,
@@ -72,6 +92,11 @@ class UserResponse(BaseModel):
             display_name=user.display_name,
             bio=user.bio,
             ldap=user.ldap,
+            auth_provider=user.auth_provider,
+            oidc_subject=user.oidc_subject,
+            oidc_email=user.oidc_email,
+            oidc_name=user.oidc_name,
+            oidc_groups=user.oidc_groups,
             role=user.role,
             is_active=user.is_active,
             last_seen_version=user.last_seen_version,

@@ -40,6 +40,7 @@ class FakeAdminReadModel:
             processing_status=VideoProcessingStatus.FAILED,
             visibility="public",
             duration_seconds=None,
+            source_created_at=None,
             created_at=datetime(2026, 6, 11, tzinfo=timezone.utc),
             latest_processing_error=None,
         )
@@ -188,6 +189,28 @@ def test_admin_dashboard_and_videos_return_backoffice_contract(
     assert users_response.json()[0]["videoCount"] == 1
     assert user_detail_response.status_code == 200
     assert user_detail_response.json()["recentVideos"][0]["title"] == "Boss clip"
+
+
+@pytest.mark.http
+def test_admin_config_returns_safe_configuration_only(app, client, user_factory) -> None:
+    admin = user_factory(role="admin")
+    app.dependency_overrides[require_admin] = lambda: admin
+
+    response = client.get("/admin/config")
+
+    assert response.status_code == 200
+    payload = response.json()
+    keys = {entry["key"] for entry in payload}
+    assert "app_env" in keys
+    assert "max_video_size_bytes" in keys
+    assert "database_url" not in keys
+    assert "secret_key" not in keys
+    assert "super_admin_password" not in keys
+    assert "discord_webhook_url" not in keys
+    assert all("url" not in entry["key"].lower() for entry in payload)
+    assert all("secret" not in entry["key"].lower() for entry in payload)
+    assert all("password" not in entry["key"].lower() for entry in payload)
+    assert all("key" not in entry["key"].lower() for entry in payload)
 
 
 @pytest.mark.http

@@ -6,6 +6,7 @@ from app.modules.auth.application.login import (
     LoginUser,
     LoginUserCommand,
 )
+from app.modules.users.domain.user import AuthProvider
 
 
 @pytest.mark.unit
@@ -59,6 +60,30 @@ def test_login_user_raises_invalid_credentials_when_password_is_wrong(
         login_user.execute(LoginUserCommand(username="alice", password="wrong"))
 
     assert password_hasher.verified_passwords == [("wrong", "hashed:secret")]
+    assert access_token_service.users == []
+
+
+@pytest.mark.unit
+def test_login_user_rejects_oidc_users_even_with_matching_password(
+    user_factory,
+    user_repository,
+    password_hasher,
+    access_token_service,
+) -> None:
+    user_repository.add(
+        user_factory(
+            username="alice",
+            password_hash="hashed:secret",
+            auth_provider=AuthProvider.OIDC,
+            oidc_subject="keycloak-user-id",
+        )
+    )
+    login_user = LoginUser(user_repository, password_hasher, access_token_service)
+
+    with pytest.raises(InvalidCredentialsError):
+        login_user.execute(LoginUserCommand(username="alice", password="secret"))
+
+    assert password_hasher.verified_passwords == []
     assert access_token_service.users == []
 
 

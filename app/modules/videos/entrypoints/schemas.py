@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.modules.users.domain.user import User
 from app.modules.videos.domain.ports import VideoListResult
@@ -26,10 +26,23 @@ from config.settings import settings
 class VideoCategoryResponse(BaseModel):
     id: UUID
     name: str
+    source: str
+    steam_appid: int | None
+    steamgriddb_game_id: int | None
+    thumbnail_vertical_url: str | None
+    thumbnail_horizontal_url: str | None
 
     @classmethod
     def from_domain(cls, category: VideoCategory) -> "VideoCategoryResponse":
-        return cls(id=category.id, name=category.name)
+        return cls(
+            id=category.id,
+            name=category.name,
+            source=category.source.value,
+            steam_appid=category.steam_appid,
+            steamgriddb_game_id=category.steamgriddb_game_id,
+            thumbnail_vertical_url=category.thumbnail_vertical_url,
+            thumbnail_horizontal_url=category.thumbnail_horizontal_url,
+        )
 
 
 class VideoTagResponse(BaseModel):
@@ -39,6 +52,18 @@ class VideoTagResponse(BaseModel):
     @classmethod
     def from_domain(cls, tag: VideoTag) -> "VideoTagResponse":
         return cls(id=tag.id, name=tag.name)
+
+
+class VideoTagCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def name_must_not_be_blank(cls, value: str) -> str:
+        name = value.strip()
+        if not name:
+            raise ValueError("name cannot be blank")
+        return name
 
 
 class VideoOwnerResponse(BaseModel):
@@ -185,12 +210,14 @@ class VideoSummaryResponse(BaseModel):
 class VideoDetailResponse(VideoSummaryResponse):
     original_filename: str
     playback_url: str | None
+    clip_url: str
     download_url: str
     thumbnail_url: str | None
     aspect_ratio: VideoAspectRatio | None
     width: int | None
     height: int | None
     duration_seconds: float | None
+    source_created_at: datetime | None
     thumbnail_path: str | None
     variants: list[VideoVariantResponse]
     is_owner: bool
@@ -217,6 +244,7 @@ class VideoDetailResponse(VideoSummaryResponse):
                 and video.variants
                 else None
             ),
+            clip_url=f"/clip/{video.id}",
             download_url=f"/videos/{video.id}/download",
             thumbnail_url=(
                 f"/videos/{video.id}/thumbnail"
@@ -227,6 +255,7 @@ class VideoDetailResponse(VideoSummaryResponse):
             width=video.width,
             height=video.height,
             duration_seconds=video.duration_seconds,
+            source_created_at=video.source_created_at,
             thumbnail_path=video.thumbnail_path,
             variants=[
                 VideoVariantResponse.from_domain(variant)
@@ -244,7 +273,7 @@ class VideoDetailResponse(VideoSummaryResponse):
 
 
 class VideoListResponse(BaseModel):
-    items: list[VideoSummaryResponse]
+    items: list[VideoDetailResponse]
     total: int
     limit: int
     offset: int
@@ -256,21 +285,120 @@ class VideoListResponse(BaseModel):
         *,
         limit: int,
         offset: int,
+        current_user: User | None,
+        favorites_by_video_id: dict[UUID, bool] | None = None,
+        reaction_counts_by_video_id: dict[UUID, dict[str, int]] | None = None,
     ) -> "VideoListResponse":
+        favorites_by_video_id = favorites_by_video_id or {}
+        reaction_counts_by_video_id = reaction_counts_by_video_id or {}
+
         return cls(
-            items=[VideoSummaryResponse.from_domain(video) for video in result.items],
+            items=[
+                VideoDetailResponse.from_domain(
+                    video,
+                    current_user=current_user,
+                    is_favorite=favorites_by_video_id.get(video.id, False),
+                    reaction_counts=reaction_counts_by_video_id.get(video.id, {}),
+                )
+                for video in result.items
+            ],
             total=result.total,
             limit=limit,
             offset=offset,
         )
 
 
+class VideoCategoryCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    thumbnail_vertical_url: str | None = Field(default=None, max_length=1000)
+    thumbnail_horizontal_url: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def name_must_not_be_blank(cls, value: str) -> str:
+        name = value.strip()
+        if not name:
+            raise ValueError("name cannot be blank")
+        return name
+
+
+class SteamGridDbGameResponse(BaseModel):
+    id: int
+    name: str
+    types: list[str] = Field(default_factory=list)
+    verified: bool | None = None
+
+
+class SteamGridDbGridResponse(BaseModel):
+    id: int | None
+    url: str
+    thumb: str | None
+    width: int | None
+    height: int | None
+    style: str | None
+    nsfw: bool | None
+    humor: bool | None
+    epilepsy: bool | None
+
+
+class SteamGridDbGridListResponse(BaseModel):
+    items: list[SteamGridDbGridResponse]
+    limit: int
+    offset: int
+    has_more: bool
+    next_offset: int | None
+
+
+class SteamVideoCategoryImportRequest(BaseModel):
+    steam_appid: int | None = Field(default=None, gt=0)
+    steamgriddb_game_id: int | None = Field(default=None, gt=0)
+    thumbnail_vertical_url: str | None = Field(default=None, max_length=1000)
+    thumbnail_horizontal_url: str | None = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def at_least_one_external_id(self):
+        if self.steam_appid is None and self.steamgriddb_game_id is None:
+            raise ValueError("steam_appid or steamgriddb_game_id is required")
+        return self
+
+
+class BulkVideoUploadItemRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=5000)
+    is_registered_only: bool = False
+    category_ids: list[UUID] = Field(default_factory=list)
+    tag_ids: list[UUID] = Field(default_factory=list)
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def title_must_not_be_blank(cls, value: str) -> str:
+        text = value.strip()
+        if not text:
+            raise ValueError("value cannot be blank")
+        return text
+
+    @field_validator("tag_ids", mode="after")
+    @classmethod
+    def tag_ids_must_fit_limit(cls, value: list[UUID]) -> list[UUID]:
+        tag_ids = list(dict.fromkeys(value))
+        if len(tag_ids) > settings.max_video_tags:
+            raise ValueError("too many tags")
+        return tag_ids
+
+
+class BulkVideoUploadResponse(BaseModel):
+    items: list[VideoDetailResponse]
+    total: int
+
+
 class VideoUpdateRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = Field(default=None, min_length=1, max_length=5000)
     is_registered_only: bool | None = None
+    edited: bool | None = None
     category_ids: list[UUID] | None = None
-    tags: list[str] | None = None
+    tag_ids: list[UUID] | None = None
+    source_created_at: datetime | None = None
 
     @field_validator("title", "description", mode="before")
     @classmethod
@@ -283,16 +411,16 @@ class VideoUpdateRequest(BaseModel):
             raise ValueError("value cannot be blank")
         return text
 
-    @field_validator("tags", mode="after")
+    @field_validator("tag_ids", mode="after")
     @classmethod
-    def tags_must_fit_limit(cls, value: list[str] | None) -> list[str] | None:
+    def tag_ids_must_fit_limit(cls, value: list[UUID] | None) -> list[UUID] | None:
         if value is None:
             return value
 
-        tags = [tag.strip() for tag in value if tag.strip()]
-        if len(tags) > settings.max_video_tags:
+        tag_ids = list(dict.fromkeys(value))
+        if len(tag_ids) > settings.max_video_tags:
             raise ValueError("too many tags")
-        return tags
+        return tag_ids
 
 
 class VideoReactionRequest(BaseModel):

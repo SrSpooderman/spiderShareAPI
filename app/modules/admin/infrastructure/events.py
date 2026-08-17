@@ -1,4 +1,3 @@
-import logging
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -8,9 +7,10 @@ from app.modules.admin.infrastructure.models import (
     WorkerEventModel,
 )
 from app.modules.users.domain.user import User
+from app.shared.infrastructure.logging import get_logger
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class AdminEventRecorder:

@@ -1,4 +1,3 @@
-import logging
 
 from sqlalchemy import select
 
@@ -6,11 +5,11 @@ from app.modules.auth.application.password_hasher import PasswordHasher
 from app.modules.users.domain.user import UserRole
 from app.modules.users.infrastructure.models import UserModel
 from app.shared.infrastructure.db.session import SessionLocal
-from app.shared.infrastructure.logging import configure_logging
+from app.shared.infrastructure.logging import configure_logging, get_logger
 from config.settings import settings
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def seed_super_admin() -> None:
