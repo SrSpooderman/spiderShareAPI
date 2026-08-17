@@ -14,8 +14,11 @@ from app.modules.auth.application.register import (
 )
 from app.modules.auth.entrypoints.routes import get_current_user, get_login_user
 from app.modules.auth.entrypoints.routes import get_register_user, require_admin
+from app.modules.auth.infrastructure.jwt_service import JwtService
+from app.modules.auth.wiring import get_jwt_service
 from app.modules.auth.wiring import get_oidc_login
 from app.modules.users.domain.user import UserRole
+from app.modules.users.wiring import get_user_repository
 from config.settings import settings
 
 
@@ -70,6 +73,7 @@ def test_login_returns_token_for_valid_credentials(app, client, user_factory) ->
     login_user = StubLoginUser(
         result=LoginResult(
             access_token="token-123",
+            refresh_token="refresh-token-123",
             token_type="bearer",
             user=PublicUser(
                 id=user.id,
@@ -95,6 +99,7 @@ def test_login_returns_token_for_valid_credentials(app, client, user_factory) ->
 
     assert response.status_code == 200
     assert response.json()["access_token"] == "token-123"
+    assert response.json()["refresh_token"] == "refresh-token-123"
     assert response.json()["token_type"] == "bearer"
     assert response.json()["user"]["username"] == "alice"
     assert login_user.command.username == "alice"
@@ -114,6 +119,7 @@ def test_oidc_authorize_and_callback_return_internal_token(
     oidc_login = StubOidcLogin(
         result=LoginResult(
             access_token="oidc-token",
+            refresh_token="oidc-refresh-token",
             token_type="bearer",
             user=PublicUser(
                 id=user.id,
@@ -148,6 +154,7 @@ def test_oidc_authorize_and_callback_return_internal_token(
 
     assert callback_response.status_code == 200
     assert callback_response.json()["access_token"] == "oidc-token"
+    assert callback_response.json()["refresh_token"] == "oidc-refresh-token"
     assert oidc_login.command.code == "code-123"
     assert oidc_login.command.redirect_uri == "https://api.example.com/auth/oidc/callback"
 
@@ -169,6 +176,7 @@ def test_oidc_authorize_and_callback_strip_configured_redirect_uri(
     oidc_login = StubOidcLogin(
         result=LoginResult(
             access_token="oidc-token",
+            refresh_token="oidc-refresh-token",
             token_type="bearer",
             user=PublicUser(
                 id=user.id,
@@ -218,6 +226,7 @@ def test_oidc_authorize_and_get_callback_use_configured_redirect_uri(
     oidc_login = StubOidcLogin(
         result=LoginResult(
             access_token="oidc-token",
+            refresh_token="oidc-refresh-token",
             token_type="bearer",
             user=PublicUser(
                 id=user.id,
@@ -308,6 +317,7 @@ def test_oidc_authorize_rejects_unallowed_return_domain(
     app.dependency_overrides[get_oidc_login] = lambda: StubOidcLogin(
         result=LoginResult(
             access_token="oidc-token",
+            refresh_token="oidc-refresh-token",
             token_type="bearer",
             user=PublicUser(
                 id=user_factory().id,
@@ -340,6 +350,7 @@ def test_login_accepts_swagger_oauth2_password_form(app, client, user_factory) -
     login_user = StubLoginUser(
         result=LoginResult(
             access_token="token-123",
+            refresh_token="refresh-token-123",
             token_type="bearer",
             user=PublicUser(
                 id=user.id,
@@ -370,8 +381,52 @@ def test_login_accepts_swagger_oauth2_password_form(app, client, user_factory) -
 
     assert response.status_code == 200
     assert response.json()["access_token"] == "token-123"
+    assert response.json()["refresh_token"] == "refresh-token-123"
     assert login_user.command.username == "alice"
     assert login_user.command.password == "supersecret"
+
+
+@pytest.mark.http
+def test_refresh_returns_new_tokens_for_valid_refresh_token(
+    app,
+    client,
+    monkeypatch,
+    user_factory,
+    user_repository,
+) -> None:
+    monkeypatch.setattr(settings, "secret_key", "test-secret")
+    monkeypatch.setattr(settings, "jwt_algorithm", "HS256")
+    monkeypatch.setattr(settings, "access_token_expire_minutes", 15)
+    monkeypatch.setattr(settings, "refresh_token_expire_days", 7)
+    user = user_factory(username="alice")
+    user_repository.add(user)
+    jwt_service = JwtService()
+    refresh_token = jwt_service.create_refresh_token(user)
+    app.dependency_overrides[get_user_repository] = lambda: user_repository
+    app.dependency_overrides[get_jwt_service] = lambda: jwt_service
+
+    response = client.post(
+        "/auth/refresh",
+        json={"refresh_token": refresh_token},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["access_token"]
+    assert body["refresh_token"]
+    assert body["token_type"] == "bearer"
+    assert body["user"]["username"] == "alice"
+
+
+@pytest.mark.http
+def test_refresh_returns_401_for_invalid_refresh_token(app, client) -> None:
+    response = client.post(
+        "/auth/refresh",
+        json={"refresh_token": "not-a-refresh-token"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Could not refresh credentials"
 
 
 @pytest.mark.http

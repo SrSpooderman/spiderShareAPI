@@ -23,9 +23,11 @@ def test_login_user_returns_token_for_valid_credentials(
     result = login_user.execute(LoginUserCommand(username="alice", password="secret"))
 
     assert result.access_token == "fake-access-token"
+    assert result.refresh_token == "fake-refresh-token"
     assert result.token_type == "bearer"
     assert result.user.username == "alice"
     assert access_token_service.users == [user]
+    assert access_token_service.refresh_users == [user]
     assert password_hasher.verified_passwords == [("secret", "hashed:secret")]
     assert user.last_login_at is not None
     assert user_repository.updated[0][1]["last_login_at"] == user.last_login_at
@@ -61,6 +63,7 @@ def test_login_user_raises_invalid_credentials_when_password_is_wrong(
 
     assert password_hasher.verified_passwords == [("wrong", "hashed:secret")]
     assert access_token_service.users == []
+    assert access_token_service.refresh_users == []
 
 
 @pytest.mark.unit

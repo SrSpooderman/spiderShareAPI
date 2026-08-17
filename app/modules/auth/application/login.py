@@ -20,6 +20,9 @@ class AccessTokenService(Protocol):
     def create_access_token(self, user: User) -> str:
         pass
 
+    def create_refresh_token(self, user: User) -> str:
+        pass
+
 
 @dataclass(frozen=True)
 class LoginUserCommand:
@@ -30,6 +33,7 @@ class LoginUserCommand:
 @dataclass(frozen=True)
 class LoginResult:
     access_token: str
+    refresh_token: str
     token_type: str
     user: PublicUser
 
@@ -69,6 +73,7 @@ class LoginUser:
 
         return LoginResult(
             access_token=self.access_token_service.create_access_token(user),
+            refresh_token=self.access_token_service.create_refresh_token(user),
             token_type="bearer",
             user=user_to_public(user),
         )

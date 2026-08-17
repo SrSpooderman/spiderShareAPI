@@ -79,6 +79,7 @@ class OidcLogin:
 
         return LoginResult(
             access_token=self.access_token_service.create_access_token(user),
+            refresh_token=self.access_token_service.create_refresh_token(user),
             token_type="bearer",
             user=user_to_public(user),
         )

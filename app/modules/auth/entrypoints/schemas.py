@@ -45,6 +45,10 @@ class OidcCallbackRequest(BaseModel):
     state: str = Field(min_length=1)
 
 
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str = Field(min_length=1)
+
+
 class UserResponse(BaseModel):
     id: UUID
     username: str
@@ -108,6 +112,7 @@ class UserResponse(BaseModel):
 
 class LoginResponse(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str
     user: UserResponse
 
@@ -115,6 +120,7 @@ class LoginResponse(BaseModel):
     def from_result(cls, result: LoginResult) -> "LoginResponse":
         return cls(
             access_token=result.access_token,
+            refresh_token=result.refresh_token,
             token_type=result.token_type,
             user=UserResponse.from_public_user(result.user),
         )

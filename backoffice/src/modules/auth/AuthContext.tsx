@@ -6,6 +6,7 @@ import {
   clearStoredToken,
   getStoredToken,
   getStoredUser,
+  storeRefreshToken,
   storeToken,
   storeUser
 } from "@/modules/auth/authStorage";
@@ -19,6 +20,7 @@ type AuthUser = {
 
 type LoginResponse = {
   access_token: string;
+  refresh_token: string;
   token_type: string;
   user: AuthUser;
 };
@@ -36,7 +38,7 @@ type AuthContextValue = {
   login: (username: string, password: string) => Promise<void>;
   startOidcLogin: (returnTo: string) => Promise<void>;
   completeOidcLogin: (code: string, state: string) => Promise<void>;
-  completeOidcRedirect: (accessToken: string) => Promise<void>;
+  completeOidcRedirect: (accessToken: string, refreshToken: string | null) => Promise<void>;
   logout: () => void;
 };
 
@@ -78,6 +80,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
           skipAuth: true
         });
         storeToken(response.access_token);
+        storeRefreshToken(response.refresh_token);
         storeUser(response.user);
         setToken(response.access_token);
         setUser(response.user);
@@ -96,12 +99,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
           skipAuth: true
         });
         storeToken(response.access_token);
+        storeRefreshToken(response.refresh_token);
         storeUser(response.user);
         setToken(response.access_token);
         setUser(response.user);
       },
-      async completeOidcRedirect(accessToken) {
+      async completeOidcRedirect(accessToken, refreshToken) {
         storeToken(accessToken);
+        if (refreshToken) {
+          storeRefreshToken(refreshToken);
+        }
         setToken(accessToken);
 
         try {

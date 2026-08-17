@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     secret_key: str
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 15
+    refresh_token_expire_days: int = 7
     oidc_enabled: bool = False
     oidc_issuer_url: str | None = None
     oidc_authorization_endpoint: str | None = None

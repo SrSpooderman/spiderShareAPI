@@ -1,6 +1,6 @@
 
 from datetime import datetime, timedelta, timezone
-from uuid import uuid4
+from uuid import UUID, uuid4
 from urllib.parse import urlencode, urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from app.modules.auth.application.login import (
     InactiveUserError,
     InvalidCredentialsError,
+    LoginResult,
     LoginUser,
     LoginUserCommand,
 )
@@ -23,23 +24,29 @@ from app.modules.auth.application.register import (
     RegisterUser,
     RegisterUserCommand,
     UsernameAlreadyExistsError,
+    user_to_public,
 )
 from app.modules.auth.entrypoints.schemas import (
     LoginRequest,
     LoginResponse,
     OidcAuthorizeResponse,
     OidcCallbackRequest,
+    RefreshTokenRequest,
     RegisterRequest,
     UserResponse,
 )
 from app.modules.auth.wiring import (
     get_current_user,
+    get_jwt_service,
     get_login_user,
     get_oidc_login,
     get_register_user,
     require_admin,
 )
+from app.modules.auth.infrastructure.jwt_service import JwtService
+from app.modules.users.domain.ports import UserRepository
 from app.modules.users.domain.user import User, can_create_user_with_role
+from app.modules.users.wiring import get_user_repository
 from app.shared.infrastructure.logging import get_logger
 from config.settings import settings
 
@@ -271,6 +278,38 @@ async def login(
     return LoginResponse.from_result(result)
 
 
+@router.post("/refresh", response_model=LoginResponse)
+def refresh(
+    request: RefreshTokenRequest,
+    jwt_service: JwtService = Depends(get_jwt_service),
+    user_repository: UserRepository = Depends(get_user_repository),
+) -> LoginResponse:
+    credentials_error = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not refresh credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    try:
+        payload = jwt_service.decode_refresh_token(request.refresh_token)
+        user_id = UUID(payload["sub"])
+    except (JWTError, KeyError, ValueError):
+        raise credentials_error
+
+    user = user_repository.get_by_id(user_id)
+    if user is None or not user.is_active:
+        raise credentials_error
+
+    return LoginResponse.from_result(
+        LoginResult(
+            access_token=jwt_service.create_access_token(user),
+            refresh_token=jwt_service.create_refresh_token(user),
+            token_type="bearer",
+            user=user_to_public(user),
+        )
+    )
+
+
 @router.get("/oidc/authorize", response_model=OidcAuthorizeResponse)
 def oidc_authorize(
     return_to: str | None = Query(default=None, min_length=1, max_length=2048),
@@ -347,6 +386,7 @@ def oidc_callback_redirect(
         _oidc_frontend_callback_uri(str(state_payload.get("frontend_origin") or "")),
         {
             "access_token": result.access_token,
+            "refresh_token": result.refresh_token,
             "token_type": result.token_type,
             "return_to": return_to,
         },

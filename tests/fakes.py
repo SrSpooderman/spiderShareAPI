@@ -944,13 +944,23 @@ class FakePasswordHasher:
 
 
 class FakeAccessTokenService:
-    def __init__(self, token: str = "fake-access-token") -> None:
+    def __init__(
+        self,
+        token: str = "fake-access-token",
+        refresh_token: str = "fake-refresh-token",
+    ) -> None:
         self.token = token
+        self.refresh_token = refresh_token
         self.users: list[User] = []
+        self.refresh_users: list[User] = []
 
     def create_access_token(self, user: User) -> str:
         self.users.append(user)
         return self.token
+
+    def create_refresh_token(self, user: User) -> str:
+        self.refresh_users.append(user)
+        return self.refresh_token
 
 
 class FakeSteamClient:
