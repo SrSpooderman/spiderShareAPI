@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Trash2 } from "lucide-react";
+import { RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -45,6 +45,15 @@ export function VideoListPage() {
   const deleteVideo = useMutation({
     mutationFn: backofficeService.deleteVideo,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["videos"] })
+  });
+  const retryVideo = useMutation({
+    mutationFn: backofficeService.retryVideo,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["videos"] });
+      queryClient.invalidateQueries({ queryKey: ["queue-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["worker-events"] });
+      queryClient.invalidateQueries({ queryKey: ["audit"] });
+    }
   });
 
   function resetOffset() {
@@ -167,15 +176,32 @@ export function VideoListPage() {
                       Abrir
                     </Link>
                     {isSuperAdmin ? (
-                      <button
-                        className="button ghost"
-                        disabled={deleteVideo.isPending}
-                        onClick={() => deleteVideo.mutate(video.id)}
-                        title="Borrar video"
-                        type="button"
-                      >
-                        <Trash2 size={15} />
-                      </button>
+                      <>
+                        {video.processingStatus === "processing" ? (
+                          <button
+                            className="button ghost"
+                            disabled={retryVideo.isPending}
+                            onClick={() => {
+                              if (window.confirm("Reiniciar el procesado de este video?")) {
+                                retryVideo.mutate(video.id);
+                              }
+                            }}
+                            title="Reiniciar procesado"
+                            type="button"
+                          >
+                            <RotateCcw size={15} />
+                          </button>
+                        ) : null}
+                        <button
+                          className="button ghost"
+                          disabled={deleteVideo.isPending}
+                          onClick={() => deleteVideo.mutate(video.id)}
+                          title="Borrar video"
+                          type="button"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </>
                     ) : null}
                   </td>
                 </tr>

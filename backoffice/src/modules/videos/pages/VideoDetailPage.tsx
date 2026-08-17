@@ -26,7 +26,13 @@ export function VideoDetailPage() {
   });
   const retry = useMutation({
     mutationFn: () => backofficeService.retryVideo(videoId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["video", videoId] })
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["video", videoId] });
+      queryClient.invalidateQueries({ queryKey: ["videos"] });
+      queryClient.invalidateQueries({ queryKey: ["queue-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["worker-events", videoId] });
+      queryClient.invalidateQueries({ queryKey: ["audit"] });
+    }
   });
   const deleteVideo = useMutation({
     mutationFn: () => backofficeService.deleteVideo(videoId),
@@ -65,11 +71,22 @@ export function VideoDetailPage() {
               <button
                 className="button primary"
                 disabled={retry.isPending}
-                onClick={() => retry.mutate()}
+                onClick={() => {
+                  if (
+                    video.processingStatus !== "processing"
+                    || window.confirm("Reiniciar el procesado de este video?")
+                  ) {
+                    retry.mutate();
+                  }
+                }}
                 type="button"
               >
                 <RotateCcw size={16} />
-                {retry.isPending ? "Reintentando..." : "Reintentar"}
+                {retry.isPending
+                  ? "Reintentando..."
+                  : video.processingStatus === "processing"
+                    ? "Reiniciar procesado"
+                    : "Reintentar"}
               </button>
             ) : null}
             {isSuperAdmin ? (
