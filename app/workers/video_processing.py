@@ -6,6 +6,9 @@ from rq import Queue, Worker, get_current_job
 
 from app.modules.admin.infrastructure.events import SqlAlchemyAdminEventRecorder
 from app.modules.videos.application.process_video import ProcessVideo
+from app.modules.videos.domain.ports import VideoProcessingQueue, VideoRepository
+from app.modules.videos.domain.video import VideoProcessingStatus
+from app.modules.videos.infrastructure.queue import RqVideoProcessingQueue
 from app.modules.videos.infrastructure.repository import SqlAlchemyVideoRepository
 from app.modules.users.infrastructure.models import UserModel
 from app.shared.infrastructure.db.session import SessionLocal
@@ -29,6 +32,19 @@ from config.settings import settings
 
 logger = get_logger(__name__)
 jaimito_logger = JaimitoWorkerLogger(logger)
+
+
+def _enqueue_pending_videos(
+    video_repository: VideoRepository,
+    video_processing_queue: VideoProcessingQueue,
+) -> int:
+    pending_videos = video_repository.list_by_processing_status(
+        [VideoProcessingStatus.PENDING.value]
+    )
+    for video in pending_videos:
+        video_processing_queue.enqueue(video.id)
+
+    return len(pending_videos)
 
 
 def _notify_discord_video_ready(video, *, job_id: str) -> None:
@@ -187,6 +203,27 @@ def main() -> None:
         "event=video.worker.started queue=%s redis_url=%s",
         settings.video_processing_queue_name,
         safe_redis_url,
+    )
+    with SessionLocal() as db:
+        pending_count = _enqueue_pending_videos(
+            SqlAlchemyVideoRepository(db),
+            RqVideoProcessingQueue(
+                redis_url=settings.redis_url,
+                queue_name=settings.video_processing_queue_name,
+            ),
+        )
+    logger.info(
+        "event=video.pending_jobs.reconciled count=%s queue=%s",
+        pending_count,
+        settings.video_processing_queue_name,
+    )
+    _record_worker_event(
+        event_type="video.pending_jobs.reconciled",
+        message="Pending video processing jobs reconciled",
+        metadata={
+            "count": pending_count,
+            "queue": settings.video_processing_queue_name,
+        },
     )
     try:
         jaimito_logger.waiting_for_jobs(queue_name=settings.video_processing_queue_name)

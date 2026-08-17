@@ -279,6 +279,33 @@ class SqlAlchemyVideoRepository(VideoRepository):
             total=total,
         )
 
+    def list_by_processing_status(
+        self,
+        statuses: list[str],
+    ) -> list[Video]:
+        if not statuses:
+            return []
+
+        statement = (
+            select(VideoModel)
+            .where(VideoModel.processing_status.in_(statuses))
+            .options(
+                selectinload(VideoModel.category_assignments).selectinload(
+                    VideoCategoryAssignmentModel.category,
+                ),
+                selectinload(VideoModel.tag_assignments).selectinload(
+                    VideoTagAssignmentModel.tag,
+                ),
+                selectinload(VideoModel.variants),
+                selectinload(VideoModel.processing_errors),
+                selectinload(VideoModel.owner),
+            )
+            .order_by(VideoModel.created_at.asc(), VideoModel.id.asc())
+        )
+        models = self.session.scalars(statement).all()
+
+        return [video_model_to_domain(model) for model in models]
+
     def create(self, video: VideoCreate) -> Video:
         model = video_create_to_model(video)
         self.session.add(model)

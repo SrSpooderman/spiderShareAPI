@@ -266,6 +266,17 @@ class FakeVideoRepository:
 
         return VideoListResult(items=videos[offset : offset + limit], total=len(videos))
 
+    def list_by_processing_status(
+        self,
+        statuses: list[str],
+    ) -> list[Video]:
+        status_values = set(statuses)
+        return [
+            video
+            for video in self.videos.values()
+            if video.processing_status.value in status_values
+        ]
+
     def create(self, video: VideoCreate) -> Video:
         self.created.append(video)
         return self.add(

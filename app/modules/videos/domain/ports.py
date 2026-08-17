@@ -68,6 +68,13 @@ class VideoRepository(ABC):
         pass
 
     @abstractmethod
+    def list_by_processing_status(
+        self,
+        statuses: list[str],
+    ) -> list[Video]:
+        pass
+
+    @abstractmethod
     def create(self, video: VideoCreate) -> Video:
         pass
 
